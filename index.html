@@ -243,7 +243,9 @@
   }
   .status-Booked{background:var(--success-light);color:var(--success);}
   .status-ToBook{background:var(--warning-light);color:var(--warning);}
+  .item-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
   .item-cost{font-family:var(--font-serif);font-weight:600;font-size:14.5px;white-space:nowrap;}
+  .item-bookedby{font-size:11.5px;color:var(--text-muted);white-space:nowrap;display:flex;align-items:center;gap:3px;}
   .item-edit-btn{
     background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;
     padding:6px;border-radius:50%;flex-shrink:0;transition:all .15s ease;
@@ -327,7 +329,7 @@
     border:1px solid rgba(15,82,87,0.15);transition:all .15s ease;
   }
   .nav-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 3px 8px rgba(15,82,87,0.3);}
-  .notes-preview{font-size:12.5px;color:var(--text-muted);margin-top:6px;max-height:40px;overflow:hidden;}
+  .notes-preview{font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.5;}
   .notes-preview b,.notes-preview strong{font-weight:700;color:var(--text);}
 
   .hidden{display:none !important;}
@@ -364,6 +366,18 @@ const TYPES = ['Flight','Transport','Food','Activity','Stays','Misc'];
 const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Misc:'#948d7c'};
 const STATUSES = ['Booked','To Book'];
 const BOOKED_BY = ['Victoria','Weng Seng'];
+const ICON_GROUPS = [
+  { group:'Transport', icons:[['🚗','Car'],['🚆','Train'],['🚌','Bus'],['⛴️','Ferry'],['🚕','Taxi'],['🚲','Bike'],['🛵','Scooter'],['🚶','Walk'],['🚠','Cable Car']] },
+  { group:'Flight', icons:[['✈️','Plane'],['🛫','Departure'],['🛬','Arrival']] },
+  { group:'Stay', icons:[['🛏️','Hotel'],['🏨','Hotel Building'],['🏠','Apartment'],['⛺','Camping']] },
+  { group:'Food', icons:[['🍜','Noodles'],['🍽️','Restaurant'],['☕','Cafe'],['🍷','Bar'],['🍰','Dessert']] },
+  { group:'Activity', icons:[['🎟️','Ticket'],['🏛️','Museum'],['📸','Photo Spot'],['🥾','Hiking'],['🏖️','Beach'],['🎢','Theme Park'],['⛷️','Skiing'],['🛍️','Shopping'],['🎭','Show']] },
+  { group:'Other', icons:[['📌','Pin'],['📄','Document']] },
+];
+function iconOptionsHtml(selected){
+  return ICON_GROUPS.map(g=>`<optgroup label="${g.group}">${g.icons.map(([emoji,label])=>
+    `<option value="${emoji}" ${selected===emoji?'selected':''}>${emoji} ${label}</option>`).join('')}</optgroup>`).join('');
+}
 
 /* ============ SUPABASE ============ */
 const SUPABASE_URL = 'https://xndkjgtdbxpabajqbjmv.supabase.co';
@@ -491,6 +505,7 @@ function dbActivityToItem(a, fileRows){
   return {
     id: a.id,
     type: a.type,
+    icon: a.icon || '',
     status: a.status,
     bookedBy: a.booked_by || '',
     name: a.name,
@@ -1014,21 +1029,23 @@ function renderItemCard(item, trip, primary, dayIdx){
   return `
     <div class="card item-card" id="${domId}" draggable="${isPrimary?'true':'false'}">
       <span class="drag-handle" title="${isPrimary?'Drag to reorder':''}" ${isPrimary?'':'style="visibility:hidden;"'}>⠿</span>
-      <div class="item-type-badge">${TYPE_ICONS[item.type]||'📌'}</div>
+      <div class="item-type-badge">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
       <div class="item-main">
         <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
         <div class="item-meta">
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
-          ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
-          ${item.link? `<span class="link-line">🔗 <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Link</a></span>`:''}
-          ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigate Here</a>`:''}
+          ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 Link</a>`:''}
+          ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigation</a>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
         ${item.notes? `<div class="notes-preview">${item.notes}</div>`:''}
       </div>
-      <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
+      <div class="item-side">
+        <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
+        ${item.bookedBy? `<div class="item-bookedby">👤 ${escapeHtml(item.bookedBy)}</div>` : ''}
+      </div>
       <button class="item-edit-btn" onclick="toggleItemPopover(event,'${item.id}','${trip.id}')">⋮</button>
     </div>`;
 }
@@ -1154,6 +1171,13 @@ function openAddItemModal(tripId, itemId){
         <label class="field-label">Status</label>
         <select id="item-status-input">${STATUSES.map(s=>`<option value="${s}" ${item&&item.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Icon</label>
+      <select id="item-icon-input">
+        <option value="">Auto (based on type)</option>
+        ${iconOptionsHtml(item&&item.icon?item.icon:'')}
+      </select>
     </div>
     <div class="field">
       <label class="field-label">Name</label>
@@ -1296,6 +1320,7 @@ async function saveItem(tripId, itemId){
 
   const payload = {
     type: document.getElementById('item-type-input').value,
+    icon: document.getElementById('item-icon-input').value || null,
     status: document.getElementById('item-status-input').value,
     booked_by: document.getElementById('item-bookedby-input').value || null,
     name,
@@ -1331,7 +1356,7 @@ async function saveItem(tripId, itemId){
 
   const localItem = {
     id: savedId,
-    type: payload.type, status: payload.status, bookedBy: payload.booked_by || '',
+    type: payload.type, icon: payload.icon || '', status: payload.status, bookedBy: payload.booked_by || '',
     name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
     dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
     timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
@@ -1454,7 +1479,7 @@ function renderTodayCard(item){
   const past = !ongoing && item.timeStart && item.timeStart < nowTime();
   return `
     <div class="card today-card" style="${past?'opacity:.55;':''}" onclick="openTripDetail('${item.tripId}')">
-      <div class="item-type-badge">${TYPE_ICONS[item.type]||'📌'}</div>
+      <div class="item-type-badge">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
       ${ongoing? '<div class="today-time" style="font-size:13px;color:var(--text-muted);">In progress</div>' :
         item.timeStart? `<div class="today-time">${itemTimeLabel(item)}</div>` : '<div class="today-time" style="font-size:13px;color:var(--text-muted);">All day</div>'}
       <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
