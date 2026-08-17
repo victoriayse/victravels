@@ -321,6 +321,12 @@
   .link-line{font-size:12.5px;margin-top:4px;}
   .link-line a{color:var(--primary);text-decoration:none;font-weight:600;}
   .link-line a:hover{text-decoration:underline;}
+  .nav-btn{
+    display:inline-flex;align-items:center;gap:4px;background:var(--primary-light);color:var(--primary-dark);
+    padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:700;text-decoration:none;
+    border:1px solid rgba(15,82,87,0.15);transition:all .15s ease;
+  }
+  .nav-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 3px 8px rgba(15,82,87,0.3);}
   .notes-preview{font-size:12.5px;color:var(--text-muted);margin-top:6px;max-height:40px;overflow:hidden;}
   .notes-preview b,.notes-preview strong{font-weight:700;color:var(--text);}
 
@@ -977,19 +983,23 @@ function renderItemList(items, trip){
   if(ui.dayFilter!=='all'){
     return `<div class="drag-group" data-group="single">${items.map(i=>renderItemCard(i, trip)).join('')}</div>`;
   }
-  // group by day when showing all (items already sorted earliest-to-latest)
+  // group by day when showing all (items already sorted earliest-to-latest).
+  // Items spanning multiple days are duplicated into every day they cross.
   const groups = {};
   const noDate = [];
   items.forEach(i=>{
     if(!i.dateStart || !trip.startDate){ noDate.push(i); return; }
-    const d = daysBetween(trip.startDate, i.dateStart)+1;
-    groups[d] = groups[d]||[];
-    groups[d].push(i);
+    const startIdx = daysBetween(trip.startDate, i.dateStart)+1;
+    const endIdx = i.dateEnd ? daysBetween(trip.startDate, i.dateEnd)+1 : startIdx;
+    for(let d=startIdx; d<=endIdx; d++){
+      groups[d] = groups[d]||[];
+      groups[d].push({ item: i, primary: d===startIdx });
+    }
   });
   let html = '';
   Object.keys(groups).sort((a,b)=>a-b).forEach(day=>{
-    html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(groups[day][0].dateStart)}</div>`;
-    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(i=>renderItemCard(i, trip)).join('')}</div>`;
+    html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(addDays(trip.startDate, day-1))}</div>`;
+    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(g=>renderItemCard(g.item, trip, g.primary, day)).join('')}</div>`;
   });
   if(noDate.length){
     html += `<div class="day-group-label">No date set</div>`;
@@ -998,10 +1008,12 @@ function renderItemList(items, trip){
   return html;
 }
 
-function renderItemCard(item, trip){
+function renderItemCard(item, trip, primary, dayIdx){
+  const isPrimary = primary!==false;
+  const domId = isPrimary ? `item-${item.id}` : `item-${item.id}-dup${dayIdx}`;
   return `
-    <div class="card item-card" id="item-${item.id}" draggable="true">
-      <span class="drag-handle" title="Drag to reorder">⠿</span>
+    <div class="card item-card" id="${domId}" draggable="${isPrimary?'true':'false'}">
+      <span class="drag-handle" title="${isPrimary?'Drag to reorder':''}" ${isPrimary?'':'style="visibility:hidden;"'}>⠿</span>
       <div class="item-type-badge">${TYPE_ICONS[item.type]||'📌'}</div>
       <div class="item-main">
         <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
@@ -1011,7 +1023,7 @@ function renderItemCard(item, trip){
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
           ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
           ${item.link? `<span class="link-line">🔗 <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Link</a></span>`:''}
-          ${item.mapsLink? `<span class="link-line">🧭 <a href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">Navigate Here</a></span>`:''}
+          ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigate Here</a>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
         ${item.notes? `<div class="notes-preview">${item.notes}</div>`:''}
@@ -1079,20 +1091,20 @@ function closePopovers(){
 }
 function toggleItemPopover(e, itemId, tripId){
   e.stopPropagation();
-  const existing = document.querySelector(`#item-${itemId} .popover`);
+  const card = e.target.closest('.item-card');
+  const existing = card.querySelector('.popover');
   closePopovers();
   if(existing) return;
-  const card = document.getElementById('item-'+itemId);
   const pop = document.createElement('div');
   pop.className='popover';
   pop.innerHTML = `
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
-    <button class="danger" onclick="showDeleteItemConfirm('${itemId}','${tripId}')">🗑️ Delete</button>
+    <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
   card.appendChild(pop);
 }
-function showDeleteItemConfirm(itemId, tripId){
-  const card = document.getElementById('item-'+itemId);
+function showDeleteItemConfirm(e, itemId, tripId){
+  const card = e.target.closest('.item-card');
   closePopovers();
   const box = document.createElement('div');
   box.className='popover confirm-box';
