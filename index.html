@@ -1,0 +1,1549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VicTravels</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#f6f6f4;
+    --card-bg:#ffffff;
+    --text:#1f2328;
+    --text-muted:#6b7280;
+    --border:#e9e9e6;
+    --primary:#2563eb;
+    --primary-light:#eef3ff;
+    --danger:#dc2626;
+    --danger-light:#fdeceb;
+    --success:#16a34a;
+    --radius:16px;
+    --radius-sm:10px;
+    --shadow:0 1px 3px rgba(20,20,20,0.06), 0 1px 2px rgba(20,20,20,0.04);
+    --shadow-hover:0 6px 16px rgba(20,20,20,0.10);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit;}
+  button{font-family:inherit;}
+  #app{max-width:1000px;margin:0 auto;padding:0 20px 80px;}
+
+  /* NAV */
+  header.topbar{
+    position:sticky;top:0;z-index:20;
+    background:rgba(246,246,244,0.9);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar-inner{
+    max-width:1000px;margin:0 auto;padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:18px;letter-spacing:-0.02em;}
+  .brand-mark{font-size:20px;}
+  nav.tabs{display:flex;gap:4px;background:#fff;border:1px solid var(--border);border-radius:999px;padding:4px;}
+  nav.tabs button{
+    border:none;background:transparent;padding:8px 16px;border-radius:999px;
+    font-size:14px;font-weight:600;color:var(--text-muted);cursor:pointer;
+    transition:all .15s ease;
+  }
+  nav.tabs button.active{background:var(--primary);color:#fff;}
+  nav.tabs button:not(.active):hover{color:var(--text);background:var(--bg);}
+
+  h1,h2,h3{margin:0;letter-spacing:-0.01em;}
+  .page-title{font-size:22px;font-weight:700;margin:28px 0 18px;}
+  .section-title{font-size:15px;font-weight:700;margin:0 0 12px;color:var(--text);}
+
+  /* CARD */
+  .card{
+    background:var(--card-bg);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    border:1px solid var(--border);
+    padding:18px;
+  }
+  .card:hover{ }
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+  @media (max-width:640px){ .grid-2{grid-template-columns:1fr;} }
+
+  /* BUTTONS */
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    border-radius:999px;border:1px solid var(--border);background:#fff;
+    padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;color:var(--text);
+    transition:all .15s ease;
+  }
+  .btn:hover{box-shadow:var(--shadow-hover);}
+  .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .btn-primary:hover{background:#1d4ed8;}
+  .btn-danger{background:var(--danger);border-color:var(--danger);color:#fff;}
+  .btn-ghost{background:transparent;border-color:transparent;}
+  .btn-ghost:hover{background:var(--bg);box-shadow:none;}
+  .btn-sm{padding:6px 12px;font-size:12.5px;}
+  .btn-block{width:100%;justify-content:center;}
+  .btn[disabled]{opacity:.5;cursor:not-allowed;}
+
+  /* EMPTY STATE */
+  .empty-state{
+    text-align:center;padding:60px 20px;color:var(--text-muted);
+  }
+  .empty-state .emoji{font-size:40px;display:block;margin-bottom:10px;}
+  .empty-state p{margin:0 0 18px;font-size:14.5px;}
+
+  /* HOME */
+  .home-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:28px 0 18px;flex-wrap:wrap;}
+  select.trip-select{
+    border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 14px;
+    font-size:14px;font-weight:600;background:#fff;color:var(--text);cursor:pointer;
+  }
+  .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+  @media (max-width:720px){ .home-grid{grid-template-columns:1fr;} }
+  .countdown-num{font-size:34px;font-weight:800;color:var(--primary);letter-spacing:-0.02em;}
+  .countdown-sub{color:var(--text-muted);font-size:13.5px;margin-top:2px;}
+  .overview-chip{
+    display:inline-flex;align-items:center;gap:4px;background:var(--primary-light);color:var(--primary);
+    padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:600;margin:2px 4px 2px 0;
+  }
+  .overview-stats{display:flex;gap:24px;margin-top:12px;}
+  .stat-num{font-size:22px;font-weight:800;}
+  .stat-label{font-size:12px;color:var(--text-muted);}
+  .flight-row{
+    display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);
+  }
+  .flight-row:last-child{border-bottom:none;}
+  .flight-icon{font-size:18px;}
+  .flight-name{font-weight:600;font-size:13.5px;}
+  .flight-meta{font-size:12px;color:var(--text-muted);}
+  .expenses-total{font-size:24px;font-weight:800;margin-top:6px;}
+  .task-row{display:flex;align-items:center;gap:10px;padding:8px 0;}
+  .task-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--primary);cursor:pointer;}
+  .task-text{flex:1;font-size:13.5px;}
+  .task-text.done{text-decoration:line-through;color:var(--text-muted);}
+  .task-add-row{display:flex;gap:8px;margin-top:10px;}
+  .task-add-row input{flex:1;}
+
+  /* FORMS */
+  input[type=text],input[type=number],input[type=date],input[type=time],input[type=url],select,textarea{
+    width:100%;padding:9px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+    font-size:14px;font-family:inherit;background:#fff;color:var(--text);
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--primary-light);border-color:var(--primary);}
+  label.field-label{display:block;font-size:12.5px;font-weight:600;color:var(--text-muted);margin-bottom:5px;}
+  .field{margin-bottom:14px;}
+  .field-row{display:flex;gap:12px;}
+  .field-row .field{flex:1;}
+
+  /* CHIPS INPUT (countries) */
+  .chip-input-row{display:flex;gap:8px;}
+  .chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;background:var(--primary-light);color:var(--primary);
+    padding:5px 6px 5px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
+  }
+  .chip button{background:none;border:none;color:var(--primary);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px;border-radius:50%;}
+  .chip button:hover{background:rgba(37,99,235,0.15);}
+
+  /* TRIPS PAGE */
+  .trip-card{cursor:pointer;position:relative;transition:box-shadow .15s ease, transform .15s ease;}
+  .trip-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-2px);}
+  .trip-card h3{font-size:16px;margin-bottom:4px;}
+  .trip-dates{font-size:12.5px;color:var(--text-muted);margin-bottom:8px;}
+  .trip-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:var(--text-muted);}
+
+  /* TRIP DETAIL */
+  .trip-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:24px 0 16px;flex-wrap:wrap;}
+  .back-link{background:none;border:none;color:var(--text-muted);font-size:13px;cursor:pointer;padding:0;margin-bottom:6px;font-weight:600;}
+  .back-link:hover{color:var(--text);}
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+  .day-btn{
+    border:1px solid var(--border);background:#fff;border-radius:999px;padding:7px 14px;
+    font-size:12.5px;font-weight:600;cursor:pointer;color:var(--text-muted);white-space:nowrap;
+  }
+  .day-btn.active{background:var(--text);border-color:var(--text);color:#fff;}
+  .filter-select{width:auto;padding:7px 10px;font-size:12.5px;font-weight:600;border-radius:999px;}
+  .toolbar-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
+
+  /* ITEM / ITINERARY CARD */
+  .item-card{
+    display:flex;align-items:center;gap:12px;padding:12px 14px;position:relative;margin-bottom:10px;
+    transition:opacity .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
+  .item-card.dragging{opacity:.4;}
+  .item-card.drag-over{box-shadow:var(--shadow-hover);border-color:var(--primary);}
+  .drag-handle{
+    cursor:grab;color:var(--text-muted);font-size:15px;flex-shrink:0;letter-spacing:-1px;
+    user-select:none;line-height:1;padding:4px 0;
+  }
+  .drag-handle:active{cursor:grabbing;}
+  .item-type-badge{
+    width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:16px;background:var(--primary-light);flex-shrink:0;
+  }
+  .item-main{flex:1;min-width:0;}
+  .item-name{font-weight:600;font-size:14px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .item-meta{font-size:12px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap;}
+  .status-badge{
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  }
+  .status-Booked{background:#e7f7ec;color:var(--success);}
+  .status-ToBook{background:#fff4e0;color:#b45309;}
+  .item-cost{font-weight:700;font-size:13.5px;white-space:nowrap;}
+  .item-edit-btn{
+    background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;
+    padding:6px;border-radius:50%;flex-shrink:0;
+  }
+  .item-edit-btn:hover{background:var(--bg);color:var(--text);}
+  .day-group-label{font-size:12.5px;font-weight:700;color:var(--text-muted);margin:18px 0 8px;text-transform:uppercase;letter-spacing:.04em;}
+  .day-group-label:first-child{margin-top:0;}
+
+  /* POPOVER MENU */
+  .popover{
+    position:absolute;top:40px;right:8px;background:#fff;border:1px solid var(--border);
+    border-radius:var(--radius-sm);box-shadow:var(--shadow-hover);z-index:30;min-width:150px;overflow:hidden;
+  }
+  .popover button{
+    display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;
+    padding:10px 14px;font-size:13px;cursor:pointer;color:var(--text);
+  }
+  .popover button:hover{background:var(--bg);}
+  .popover button.danger{color:var(--danger);}
+  .confirm-box{padding:12px 14px;width:220px;}
+  .confirm-box p{font-size:12.5px;margin:0 0 10px;color:var(--text);}
+  .confirm-actions{display:flex;gap:8px;}
+
+  /* MODAL */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(20,20,20,0.4);display:flex;align-items:center;justify-content:center;
+    z-index:100;padding:20px;
+  }
+  .modal-overlay.hidden{display:none;}
+  .modal{
+    background:#fff;border-radius:var(--radius);max-width:480px;width:100%;max-height:88vh;overflow-y:auto;
+    box-shadow:0 20px 50px rgba(0,0,0,0.2);padding:22px;
+  }
+  .modal.modal-wide{max-width:640px;}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;}
+  .modal-header h3{font-size:17px;}
+  .modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-muted);line-height:1;padding:2px 6px;}
+  .modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+
+  /* RICH TEXT NOTES */
+  .rt-toolbar{display:flex;gap:4px;margin-bottom:6px;}
+  .rt-toolbar button{
+    border:1px solid var(--border);background:#fff;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:13px;
+  }
+  .rt-toolbar button:hover{background:var(--bg);}
+  .rt-editor{
+    min-height:80px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;font-size:13.5px;
+  }
+  .rt-editor:focus{outline:2px solid var(--primary-light);border-color:var(--primary);}
+
+  /* FILE UPLOAD */
+  .file-chip{display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:8px;padding:6px 10px;font-size:12.5px;margin-top:6px;gap:8px;}
+  .file-chip button{background:none;border:none;color:var(--danger);cursor:pointer;font-size:13px;flex-shrink:0;}
+  .file-chip-name{cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+  .file-chip-name:hover{text-decoration:underline;}
+  .file-pill{
+    display:inline-flex;align-items:center;gap:3px;background:var(--bg);border-radius:999px;padding:2px 8px;
+    cursor:pointer;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .file-pill:hover{background:var(--primary-light);color:var(--primary);}
+
+  /* TODAY PAGE */
+  .today-scroll{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 14px;}
+  .today-card{
+    min-width:190px;max-width:190px;flex-shrink:0;padding:14px;
+  }
+  .today-card .item-type-badge{margin-bottom:8px;}
+  .today-card .item-name{white-space:normal;font-size:13.5px;}
+  .today-time{font-size:20px;font-weight:800;margin:4px 0 2px;}
+
+  .muted-note{color:var(--text-muted);font-size:13px;}
+  .link-line{font-size:12.5px;margin-top:4px;}
+  .link-line a{color:var(--primary);text-decoration:none;}
+  .link-line a:hover{text-decoration:underline;}
+  .notes-preview{font-size:12.5px;color:var(--text-muted);margin-top:6px;max-height:40px;overflow:hidden;}
+  .notes-preview b,.notes-preview strong{font-weight:700;color:var(--text);}
+
+  /* AUTH */
+  .hidden{display:none !important;}
+  .auth-screen{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .auth-card{
+    background:var(--card-bg);border-radius:var(--radius);box-shadow:var(--shadow-hover);
+    border:1px solid var(--border);padding:32px 28px;max-width:360px;width:100%;text-align:center;
+  }
+  .auth-card .brand-mark{font-size:32px;display:block;margin-bottom:6px;}
+  .auth-card h1{font-size:19px;margin-bottom:4px;}
+  .auth-card p.muted-note{margin-bottom:18px;}
+  .auth-status{font-size:12.5px;margin-top:10px;min-height:16px;}
+  .logout-link{background:none;border:none;color:var(--text-muted);font-size:12.5px;cursor:pointer;font-weight:600;padding:6px 8px;}
+  .logout-link:hover{color:var(--text);}
+  .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
+</style>
+</head>
+<body>
+
+<div class="auth-screen hidden" id="auth-screen"></div>
+
+<div id="app-shell" class="hidden">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand" onclick="setView('home')" style="cursor:pointer;"><span class="brand-mark">✈️</span> VicTravels</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <nav class="tabs" id="main-nav">
+          <button data-view="home">Home</button>
+          <button data-view="trips">Trips</button>
+          <button data-view="today">Today</button>
+        </nav>
+        <button class="logout-link" onclick="logout()">Log out</button>
+      </div>
+    </div>
+  </header>
+
+  <div id="app"></div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<div class="modal-overlay hidden" id="preview-overlay" style="z-index:200;">
+  <div class="modal modal-wide" id="preview-content"></div>
+</div>
+
+<script>
+/* ============ UTILITIES ============ */
+const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Misc:'📌'};
+const TYPES = ['Flight','Transport','Food','Activity','Stays','Misc'];
+const TYPE_COLORS = {Flight:'#0ea5e9',Transport:'#2563eb',Food:'#f59e0b',Activity:'#10b981',Stays:'#a855f7',Misc:'#6b7280'};
+const STATUSES = ['Booked','To Book'];
+const BOOKED_BY = ['Victoria','Weng Seng'];
+
+/* ============ SUPABASE ============ */
+const SUPABASE_URL = 'https://xndkjgtdbxpabajqbjmv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_T3LclvJsqEnvqBdKMH-hgQ_LBiDrI9F';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function escapeHtml(s){
+  if(s==null) return '';
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function todayStr(){
+  const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function nowTime(){
+  const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function parseDate(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function daysBetween(a,b){ return Math.round((parseDate(b)-parseDate(a))/86400000); }
+function fmtDateShort(s){
+  if(!s) return '';
+  const d=parseDate(s);
+  return d.toLocaleDateString('en-SG',{day:'numeric',month:'short'});
+}
+function fmtDateLong(s){
+  if(!s) return '';
+  const d=parseDate(s);
+  return d.toLocaleDateString('en-SG',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+}
+function fmtTime(t){
+  if(!t) return '';
+  const [h,m]=t.split(':').map(Number);
+  const ampm = h>=12?'PM':'AM';
+  const h12 = h%12===0?12:h%12;
+  return h12+':'+String(m).padStart(2,'0')+' '+ampm;
+}
+function fmtCost(n){
+  n = Number(n)||0;
+  return 'S$'+n.toLocaleString('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function statusClass(s){ return 'status-'+s.replace(/\s+/g,''); }
+function addDays(dateStr, n){
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function itemSortKey(item){ return (item.dateStart||'9999-99-99')+' '+(item.timeStart||'00:00'); }
+// Chronological by day first; items sharing the same day are ordered by their manual drag position.
+function compareItems(a,b){
+  const da = a.dateStart || '9999-99-99';
+  const db = b.dateStart || '9999-99-99';
+  if(da!==db) return da<db?-1:1;
+  return (a.order||0)-(b.order||0);
+}
+function itemDateLabel(item){
+  if(!item.dateStart) return '';
+  if(item.dateEnd && item.dateEnd!==item.dateStart) return fmtDateShort(item.dateStart)+' – '+fmtDateShort(item.dateEnd);
+  return fmtDateShort(item.dateStart);
+}
+function itemTimeLabel(item){
+  if(!item.timeStart) return '';
+  if(item.timeEnd && item.timeEnd!==item.timeStart) return fmtTime(item.timeStart)+' – '+fmtTime(item.timeEnd);
+  return fmtTime(item.timeStart);
+}
+function itemMatchesDay(item, trip, dayNum){
+  if(!item.dateStart || !trip.startDate) return false;
+  const dayDate = addDays(trip.startDate, dayNum-1);
+  const end = item.dateEnd || item.dateStart;
+  return dayDate >= item.dateStart && dayDate <= end;
+}
+
+/* ============ STATE ============ */
+let data = { trips: [] };
+let currentUser = null;
+let ui = {
+  view: 'home',
+  homeTripId: null,
+  detailTripId: null,
+  dayFilter: 'all',
+  typeFilter: 'all',
+  statusFilter: 'all',
+  bookedByFilter: 'all',
+  todayShowAll: false,
+  homeExpensesFilter: 'all',
+  expensesModalType: 'all',
+  expensesModalBookedBy: 'all',
+};
+let expensesChart = null;
+
+/* ---- Load everything from Supabase into the same in-memory shape the UI already expects ---- */
+async function loadAllData(){
+  const { data: tripRows, error: tripErr } = await sb.from('trips').select('*').order('start_date', { ascending: true });
+  if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
+
+  const tripIds = tripRows.map(t=>t.id);
+  let activityRows = [], taskRows = [], fileRows = [];
+  if(tripIds.length){
+    const [actRes, taskRes] = await Promise.all([
+      sb.from('activities').select('*').in('trip_id', tripIds).order('sort_order', { ascending: true }),
+      sb.from('tasks').select('*').in('trip_id', tripIds).order('created_at', { ascending: true }),
+    ]);
+    if(actRes.error) alert('Could not load activities: '+actRes.error.message);
+    if(taskRes.error) alert('Could not load tasks: '+taskRes.error.message);
+    activityRows = actRes.data || [];
+    taskRows = taskRes.data || [];
+    const activityIds = activityRows.map(a=>a.id);
+    if(activityIds.length){
+      const filesRes = await sb.from('activity_files').select('*').in('activity_id', activityIds);
+      if(filesRes.error) alert('Could not load attachments: '+filesRes.error.message);
+      fileRows = filesRes.data || [];
+    }
+  }
+
+  data.trips = tripRows.map(t=>({
+    id: t.id,
+    name: t.name,
+    countries: t.countries || [],
+    startDate: t.start_date || '',
+    endDate: t.end_date || '',
+    pax: t.pax || 1,
+    items: activityRows.filter(a=>a.trip_id===t.id).map(a=>dbActivityToItem(a, fileRows)),
+    tasks: taskRows.filter(tk=>tk.trip_id===t.id).map(tk=>({ id: tk.id, text: tk.text, done: tk.done })),
+  }));
+}
+function dbActivityToItem(a, fileRows){
+  return {
+    id: a.id,
+    type: a.type,
+    status: a.status,
+    bookedBy: a.booked_by || '',
+    name: a.name,
+    costTotal: Number(a.cost_total) || 0,
+    costPerPax: Number(a.cost_per_pax) || 0,
+    dateStart: a.date_start || '',
+    dateEnd: a.date_end || '',
+    timeStart: a.time_start ? a.time_start.slice(0,5) : '',
+    timeEnd: a.time_end ? a.time_end.slice(0,5) : '',
+    link: a.link || '',
+    notes: a.notes || '',
+    order: a.sort_order || 0,
+    files: fileRows.filter(f=>f.activity_id===a.id).map(f=>({ id: f.id, name: f.file_name, storagePath: f.storage_path })),
+  };
+}
+function getTrip(id){ return data.trips.find(t=>t.id===id); }
+function sortedTrips(){
+  return [...data.trips].sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||''));
+}
+function tripDays(trip){
+  if(!trip.startDate || !trip.endDate) return 1;
+  return Math.max(1, daysBetween(trip.startDate, trip.endDate)+1);
+}
+function defaultHomeTrip(){
+  const trips = sortedTrips();
+  if(trips.length===0) return null;
+  const t = todayStr();
+  const upcoming = trips.find(tr => tr.endDate >= t);
+  return (upcoming || trips[trips.length-1]).id;
+}
+
+/* ============ AUTH ============ */
+function renderAuthScreen(){
+  document.getElementById('auth-screen').innerHTML = `
+    <div class="auth-card">
+      <span class="brand-mark">✈️</span>
+      <h1>VicTravels</h1>
+      <p class="muted-note">Sign in with your email to access your trips.</p>
+      <div class="field" style="text-align:left;">
+        <input type="text" id="auth-email-input" placeholder="you@example.com" onkeydown="if(event.key==='Enter')sendMagicLink();">
+      </div>
+      <button class="btn btn-primary btn-block" id="auth-send-btn" onclick="sendMagicLink()">Send magic link</button>
+      <div class="auth-status" id="auth-status"></div>
+    </div>`;
+}
+async function sendMagicLink(){
+  const emailInput = document.getElementById('auth-email-input');
+  const email = emailInput.value.trim();
+  const statusEl = document.getElementById('auth-status');
+  const btn = document.getElementById('auth-send-btn');
+  if(!email){ statusEl.style.color = 'var(--danger)'; statusEl.textContent = 'Enter your email first.'; return; }
+  btn.disabled = true; btn.textContent = 'Sending…';
+  statusEl.style.color = 'var(--text-muted)'; statusEl.textContent = '';
+  const { error } = await sb.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.href.split('#')[0].split('?')[0] }
+  });
+  btn.disabled = false; btn.textContent = 'Send magic link';
+  if(error){ statusEl.style.color = 'var(--danger)'; statusEl.textContent = error.message; }
+  else { statusEl.style.color = 'var(--success)'; statusEl.textContent = 'Check your email for a sign-in link.'; }
+}
+async function logout(){
+  await sb.auth.signOut();
+}
+function showAuthScreen(){
+  currentUser = null;
+  document.getElementById('app-shell').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+  renderAuthScreen();
+}
+async function onSignedIn(session){
+  currentUser = session.user;
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app-shell').classList.remove('hidden');
+  document.getElementById('app').innerHTML = '<div class="loading-note">Loading your trips…</div>';
+  await loadAllData();
+  render();
+}
+let lastAuthUserId = null;
+async function initAuth(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){ lastAuthUserId = session.user.id; await onSignedIn(session); }
+  else showAuthScreen();
+  // Handles: magic-link sign-in completing, token refresh, and sign-out from any tab.
+  sb.auth.onAuthStateChange((event, session)=>{
+    if(event==='SIGNED_IN' && session && session.user.id!==lastAuthUserId){
+      lastAuthUserId = session.user.id;
+      onSignedIn(session);
+    } else if(event==='SIGNED_OUT'){
+      lastAuthUserId = null;
+      showAuthScreen();
+    }
+  });
+}
+
+/* ============ NAV ============ */
+document.getElementById('main-nav').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-view]');
+  if(!btn) return;
+  setView(btn.dataset.view);
+});
+function setView(view){
+  ui.view = view;
+  closePopovers();
+  render();
+}
+
+/* ============ RENDER DISPATCH ============ */
+function render(){
+  document.querySelectorAll('#main-nav button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.view===ui.view || (ui.view==='tripDetail' && b.dataset.view==='trips'));
+  });
+  const app = document.getElementById('app');
+  if(ui.view==='home') app.innerHTML = renderHome();
+  else if(ui.view==='trips') app.innerHTML = renderTrips();
+  else if(ui.view==='tripDetail') app.innerHTML = renderTripDetail();
+  else if(ui.view==='today') app.innerHTML = renderToday();
+  afterRender();
+}
+
+function afterRender(){
+  if(ui.view==='home') renderExpensesChart();
+}
+
+/* ============ HOME ============ */
+function renderHome(){
+  if(data.trips.length===0){
+    return `
+      <div class="empty-state">
+        <span class="emoji">🧳</span>
+        <p>No trips yet. Start planning your next adventure.</p>
+        <button class="btn btn-primary" onclick="openAddTripModal()">+ Add Trip</button>
+      </div>`;
+  }
+  if(!ui.homeTripId || !getTrip(ui.homeTripId)) ui.homeTripId = defaultHomeTrip();
+  const trip = getTrip(ui.homeTripId);
+  const trips = sortedTrips();
+
+  return `
+    <div class="home-header">
+      <h1 class="page-title" style="margin:0;">Welcome back</h1>
+      <select class="trip-select" onchange="ui.homeTripId=this.value; render();">
+        ${trips.map(t=>`<option value="${t.id}" ${t.id===trip.id?'selected':''}>${escapeHtml(t.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="home-grid">
+      ${renderCountdownCard(trip)}
+      ${renderOverviewCard(trip)}
+    </div>
+    <div class="home-grid">
+      ${renderFlightCard(trip)}
+      ${renderAccommodationsCard(trip)}
+    </div>
+    <div class="home-grid">
+      ${renderExpensesCard(trip)}
+      ${renderTasksCard(trip)}
+    </div>
+  `;
+}
+
+function renderCountdownCard(trip){
+  const t = todayStr();
+  let num='', sub='';
+  if(!trip.startDate || !trip.endDate){
+    num='—'; sub='No dates set for this trip yet';
+  } else if(t < trip.startDate){
+    const d = daysBetween(t, trip.startDate);
+    num = d; sub = d===1 ? 'day to go' : 'days to go';
+  } else if(t <= trip.endDate){
+    const dayNum = daysBetween(trip.startDate, t)+1;
+    num = 'Day '+dayNum; sub = 'of '+tripDays(trip)+' — trip in progress';
+  } else {
+    const d = daysBetween(trip.endDate, t);
+    num = '✓'; sub = 'Trip ended '+d+' day'+(d===1?'':'s')+' ago';
+  }
+  return `
+    <div class="card">
+      <div class="section-title">Countdown</div>
+      <div class="countdown-num">${num}</div>
+      <div class="countdown-sub">${sub}</div>
+    </div>`;
+}
+
+function renderOverviewCard(trip){
+  const countries = trip.countries||[];
+  return `
+    <div class="card">
+      <div class="section-title">Trip Overview</div>
+      <div>${countries.length? countries.map(c=>`<span class="overview-chip">${escapeHtml(c)}</span>`).join('') : '<span class="muted-note">No countries added</span>'}</div>
+      <div class="overview-stats">
+        <div><div class="stat-num">${tripDays(trip)}</div><div class="stat-label">DAYS</div></div>
+        <div><div class="stat-num">${countries.length}</div><div class="stat-label">COUNTRIES</div></div>
+        <div><div class="stat-num">${(trip.items||[]).length}</div><div class="stat-label">ACTIVITIES</div></div>
+      </div>
+    </div>`;
+}
+
+function renderFlightCard(trip){
+  const flights = (trip.items||[]).filter(i=>i.type==='Flight').sort(compareItems);
+  return `
+    <div class="card">
+      <div class="section-title">Flight Details</div>
+      ${flights.length===0 ? '<p class="muted-note">No flights added yet.</p>' :
+        flights.slice(0,4).map(f=>`
+          <div class="flight-row">
+            <span class="flight-icon">✈️</span>
+            <div style="flex:1;min-width:0;">
+              <div class="flight-name">${escapeHtml(f.name||'Untitled')}</div>
+              <div class="flight-meta">${itemDateLabel(f)}${f.timeStart? ' · '+itemTimeLabel(f):''}</div>
+            </div>
+            <span class="status-badge ${statusClass(f.status)}">${f.status}</span>
+          </div>`).join('')}
+    </div>`;
+}
+
+function renderAccommodationsCard(trip){
+  const stays = (trip.items||[]).filter(i=>i.type==='Stays').sort(compareItems);
+  return `
+    <div class="card">
+      <div class="section-title">Accommodations</div>
+      ${stays.length===0 ? '<p class="muted-note">No accommodations added yet.</p>' :
+        stays.slice(0,4).map(s=>{
+          const nights = (s.dateEnd && s.dateStart) ? Math.max(1, daysBetween(s.dateStart, s.dateEnd)) : null;
+          return `
+          <div class="flight-row">
+            <span class="flight-icon">🛏️</span>
+            <div style="flex:1;min-width:0;">
+              <div class="flight-name">${escapeHtml(s.name||'Untitled')}</div>
+              <div class="flight-meta">${itemDateLabel(s)}${nights? ' · '+nights+' night'+(nights===1?'':'s') : ''}</div>
+            </div>
+            <span class="status-badge ${statusClass(s.status)}">${s.status}</span>
+          </div>`;}).join('')}
+    </div>`;
+}
+
+function renderExpensesCard(trip){
+  const filter = ui.homeExpensesFilter;
+  const items = (trip.items||[]).filter(i=>Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
+  const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
+  return `
+    <div class="card">
+      <div class="section-title">Expenses</div>
+      <div class="filter-bar" style="margin-bottom:10px;">
+        <button class="day-btn ${filter==='all'?'active':''}" onclick="ui.homeExpensesFilter='all';render();">All</button>
+        <button class="day-btn ${filter==='Booked'?'active':''}" onclick="ui.homeExpensesFilter='Booked';render();">Booked</button>
+        <button class="day-btn ${filter==='To Book'?'active':''}" onclick="ui.homeExpensesFilter='To Book';render();">To Book</button>
+      </div>
+      ${items.length===0 ? '<p class="muted-note">No costs logged yet.</p>' : `
+        <div style="height:150px;position:relative;"><canvas id="expenses-chart"></canvas></div>
+        <div class="expenses-total">${fmtCost(total)}</div>
+        <div class="countdown-sub">total across ${items.length} item${items.length===1?'':'s'}</div>
+      `}
+    </div>`;
+}
+
+function renderExpensesChart(){
+  const canvas = document.getElementById('expenses-chart');
+  if(!canvas || typeof Chart==='undefined') return;
+  const trip = getTrip(ui.homeTripId);
+  if(!trip) return;
+  const filter = ui.homeExpensesFilter;
+  const byType = {};
+  (trip.items||[]).forEach(i=>{
+    if(Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+  });
+  const labels = Object.keys(byType);
+  if(expensesChart) expensesChart.destroy();
+  expensesChart = new Chart(canvas, {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data: labels.map(l=>byType[l]), backgroundColor: labels.map(l=>TYPE_COLORS[l]||'#999'), borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:11} } } }, cutout:'65%' }
+  });
+}
+
+function renderTasksCard(trip){
+  const manualTasks = trip.tasks||[];
+  const autoTasks = (trip.items||[])
+    .filter(i=>i.status==='To Book')
+    .sort(compareItems);
+  const empty = manualTasks.length===0 && autoTasks.length===0;
+  return `
+    <div class="card">
+      <div class="section-title">Pending Tasks</div>
+      ${empty ? '<p class="muted-note">No tasks yet.</p>' : ''}
+      ${autoTasks.map(item=>`
+        <div class="task-row">
+          <input type="checkbox" onchange="toggleAutoTask('${trip.id}','${item.id}')">
+          <span class="task-text">Book: ${escapeHtml(item.name||'Untitled')}</span>
+          <span class="overview-chip" style="margin:0;">auto</span>
+          <button class="btn btn-ghost btn-sm" onclick="openAddItemModal('${trip.id}','${item.id}')">✏️</button>
+        </div>`).join('')}
+      ${manualTasks.map(task=>`
+        <div class="task-row">
+          <input type="checkbox" ${task.done?'checked':''} onchange="toggleTask('${trip.id}','${task.id}')">
+          <span class="task-text ${task.done?'done':''}" ondblclick="editTaskPrompt('${trip.id}','${task.id}')">${escapeHtml(task.text)}</span>
+          <button class="btn btn-ghost btn-sm" onclick="editTaskPrompt('${trip.id}','${task.id}')">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteTask('${trip.id}','${task.id}')">🗑️</button>
+        </div>`).join('')}
+      <div class="task-add-row">
+        <input type="text" id="new-task-input" placeholder="Add a task…" onkeydown="if(event.key==='Enter')addTask('${trip.id}')">
+        <button class="btn btn-primary btn-sm" onclick="addTask('${trip.id}')">Add</button>
+      </div>
+    </div>`;
+}
+async function toggleAutoTask(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip.items.find(i=>i.id===itemId);
+  const newStatus = item.status==='To Book' ? 'Booked' : 'To Book';
+  const { error } = await sb.from('activities').update({ status: newStatus }).eq('id', itemId);
+  if(error){ alert('Could not update status: '+error.message); return; }
+  item.status = newStatus;
+  render();
+}
+
+async function addTask(tripId){
+  const input = document.getElementById('new-task-input');
+  const text = input.value.trim();
+  if(!text) return;
+  const { data: row, error } = await sb.from('tasks').insert({ trip_id: tripId, text }).select().single();
+  if(error){ alert('Could not add task: '+error.message); return; }
+  const trip = getTrip(tripId);
+  trip.tasks = trip.tasks||[];
+  trip.tasks.push({ id: row.id, text: row.text, done: row.done });
+  render();
+}
+async function toggleTask(tripId, taskId){
+  const trip = getTrip(tripId);
+  const task = trip.tasks.find(t=>t.id===taskId);
+  const newDone = !task.done;
+  const { error } = await sb.from('tasks').update({ done: newDone }).eq('id', taskId);
+  if(error){ alert('Could not update task: '+error.message); return; }
+  task.done = newDone;
+  render();
+}
+async function editTaskPrompt(tripId, taskId){
+  const trip = getTrip(tripId);
+  const task = trip.tasks.find(t=>t.id===taskId);
+  const val = prompt('Edit task', task.text);
+  if(val===null || !val.trim()) return;
+  const { error } = await sb.from('tasks').update({ text: val.trim() }).eq('id', taskId);
+  if(error){ alert('Could not update task: '+error.message); return; }
+  task.text = val.trim();
+  render();
+}
+async function deleteTask(tripId, taskId){
+  const { error } = await sb.from('tasks').delete().eq('id', taskId);
+  if(error){ alert('Could not delete task: '+error.message); return; }
+  const trip = getTrip(tripId);
+  trip.tasks = trip.tasks.filter(t=>t.id!==taskId);
+  render();
+}
+
+/* ============ TRIPS LIST ============ */
+function renderTrips(){
+  return `
+    <div class="toolbar-row" style="margin-top:28px;">
+      <h1 class="page-title" style="margin:0;">Trips</h1>
+      <button class="btn btn-primary" onclick="openAddTripModal()">+ Add Trip</button>
+    </div>
+    ${data.trips.length===0 ? `
+      <div class="empty-state">
+        <span class="emoji">🗺️</span>
+        <p>No trips yet. Add your first trip to get started.</p>
+        <button class="btn btn-primary" onclick="openAddTripModal()">+ Add Trip</button>
+      </div>` : `
+      <div class="grid-cards">
+        ${sortedTrips().map(t=>renderTripCard(t)).join('')}
+      </div>`}
+  `;
+}
+
+function renderTripCard(trip){
+  const total = (trip.items||[]).reduce((s,i)=>s+(Number(i.costTotal)||0),0);
+  return `
+    <div class="card trip-card" onclick="openTripDetail('${trip.id}')">
+      <h3>${escapeHtml(trip.name)}</h3>
+      <div class="trip-dates">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate) : 'No dates set'} · ${trip.pax||1} pax</div>
+      <div>${(trip.countries||[]).slice(0,4).map(c=>`<span class="overview-chip">${escapeHtml(c)}</span>`).join('')}</div>
+      <div class="trip-card-footer">
+        <span>${(trip.items||[]).length} activities</span>
+        <span>${fmtCost(total)}</span>
+      </div>
+    </div>`;
+}
+
+function openTripDetail(tripId){
+  ui.detailTripId = tripId;
+  ui.dayFilter='all'; ui.typeFilter='all'; ui.statusFilter='all'; ui.bookedByFilter='all';
+  ui.view='tripDetail';
+  render();
+}
+
+/* ---- Add / Edit Trip Modal ---- */
+let tempCountries = [];
+function openAddTripModal(editId){
+  const trip = editId ? getTrip(editId) : null;
+  tempCountries = trip ? [...(trip.countries||[])] : [];
+  const html = `
+    <div class="modal-header">
+      <h3>${trip? 'Edit Trip' : 'Add Trip'}</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="field">
+      <label class="field-label">Trip Name</label>
+      <input type="text" id="trip-name-input" value="${trip?escapeHtml(trip.name):''}" placeholder="e.g. Japan Spring Trip">
+    </div>
+    <div class="field">
+      <label class="field-label">Countries</label>
+      <div class="chip-input-row">
+        <input type="text" id="country-input" placeholder="Type a country, then Add" onkeydown="if(event.key==='Enter'){event.preventDefault();addCountryChip();}">
+        <button type="button" class="btn btn-sm" onclick="addCountryChip()">Add</button>
+      </div>
+      <div class="chip-list" id="country-chip-list"></div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Start Date</label>
+        <input type="date" id="trip-start-input" value="${trip?trip.startDate||'':''}">
+      </div>
+      <div class="field">
+        <label class="field-label">End Date</label>
+        <input type="date" id="trip-end-input" value="${trip?trip.endDate||'':''}">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Number of Pax</label>
+      <input type="number" min="1" step="1" id="trip-pax-input" value="${trip&&trip.pax?trip.pax:1}">
+    </div>
+    <div class="modal-footer">
+      ${trip? `<button class="btn" style="margin-right:auto;color:var(--danger);" onclick="deleteTripConfirm('${trip.id}')">Delete Trip</button>` : ''}
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTrip('${trip?trip.id:''}')">Save</button>
+    </div>
+  `;
+  openModal(html);
+  renderCountryChips();
+}
+function addCountryChip(){
+  const input = document.getElementById('country-input');
+  const val = input.value.trim();
+  if(!val) return;
+  tempCountries.push(val);
+  input.value='';
+  renderCountryChips();
+}
+function removeCountryChip(idx){
+  tempCountries.splice(idx,1);
+  renderCountryChips();
+}
+function renderCountryChips(){
+  const el = document.getElementById('country-chip-list');
+  if(!el) return;
+  el.innerHTML = tempCountries.map((c,idx)=>`<span class="chip">${escapeHtml(c)}<button onclick="removeCountryChip(${idx})">&times;</button></span>`).join('');
+}
+async function saveTrip(editId){
+  const name = document.getElementById('trip-name-input').value.trim();
+  const startDate = document.getElementById('trip-start-input').value;
+  const endDate = document.getElementById('trip-end-input').value;
+  const pax = Math.max(1, parseInt(document.getElementById('trip-pax-input').value) || 1);
+  if(!name){ alert('Please enter a trip name.'); return; }
+  if(startDate && endDate && endDate < startDate){ alert('End date must be after start date.'); return; }
+  const payload = { name, countries: [...tempCountries], start_date: startDate || null, end_date: endDate || null, pax };
+  if(editId){
+    const { data: row, error } = await sb.from('trips').update(payload).eq('id', editId).select().single();
+    if(error){ alert('Could not save trip: '+error.message); return; }
+    const trip = getTrip(editId);
+    Object.assign(trip, { name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax });
+  } else {
+    const { data: row, error } = await sb.from('trips').insert(payload).select().single();
+    if(error){ alert('Could not create trip: '+error.message); return; }
+    data.trips.push({ id: row.id, name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax, items:[], tasks:[] });
+  }
+  closeModal(); render();
+}
+function deleteTripConfirm(tripId){
+  const trip = getTrip(tripId);
+  const modal = document.getElementById('modal-content');
+  modal.innerHTML = `
+    <div class="modal-header"><h3>Delete Trip</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p>Are you sure you want to delete <strong>${escapeHtml(trip.name)}</strong>? This will remove all its itinerary items and tasks. This can't be undone.</p>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger" onclick="deleteTrip('${tripId}')">Yes, delete trip</button>
+    </div>`;
+}
+async function deleteTrip(tripId){
+  const trip = getTrip(tripId);
+  const storagePaths = (trip.items||[]).flatMap(i=>(i.files||[]).map(f=>f.storagePath));
+  const { error } = await sb.from('trips').delete().eq('id', tripId);
+  if(error){ alert('Could not delete trip: '+error.message); return; }
+  if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
+  data.trips = data.trips.filter(t=>t.id!==tripId);
+  closeModal();
+  ui.view='trips';
+  render();
+}
+
+/* ============ TRIP DETAIL ============ */
+function renderTripDetail(){
+  const trip = getTrip(ui.detailTripId);
+  if(!trip){ ui.view='trips'; return renderTrips(); }
+  const numDays = tripDays(trip);
+
+  let items = [...(trip.items||[])];
+  if(ui.typeFilter!=='all') items = items.filter(i=>i.type===ui.typeFilter);
+  if(ui.statusFilter!=='all') items = items.filter(i=>i.status===ui.statusFilter);
+  if(ui.bookedByFilter && ui.bookedByFilter!=='all') items = items.filter(i=>i.bookedBy===ui.bookedByFilter);
+  if(ui.dayFilter!=='all'){
+    items = items.filter(i=> itemMatchesDay(i, trip, Number(ui.dayFilter)));
+  }
+  items.sort(compareItems);
+
+  return `
+    <button class="back-link" style="margin-top:24px;" onclick="ui.view='trips';render();">&larr; Back to Trips</button>
+    <div class="trip-detail-header">
+      <div>
+        <h1 class="page-title" style="margin:0 0 4px;">${escapeHtml(trip.name)}</h1>
+        <div class="countdown-sub">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate)+' · '+numDays+' day'+(numDays===1?'':'s') : 'No dates set'} · ${trip.pax||1} pax</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" onclick="openExpensesModal('${trip.id}')">Expenses</button>
+        <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}')">+ Add Activity</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <button class="day-btn ${ui.dayFilter==='all'?'active':''}" onclick="ui.dayFilter='all';render();">All Days</button>
+      ${Array.from({length:numDays}).map((_,i)=>`<button class="day-btn ${ui.dayFilter==String(i+1)?'active':''}" onclick="ui.dayFilter='${i+1}';render();">Day ${i+1}</button>`).join('')}
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" onchange="ui.typeFilter=this.value;render();">
+        <option value="all" ${ui.typeFilter==='all'?'selected':''}>All Types</option>
+        ${TYPES.map(t=>`<option value="${t}" ${ui.typeFilter===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.statusFilter=this.value;render();">
+        <option value="all" ${ui.statusFilter==='all'?'selected':''}>All Statuses</option>
+        ${STATUSES.map(s=>`<option value="${s}" ${ui.statusFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.bookedByFilter=this.value;render();">
+        <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
+        ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+      </select>
+    </div>
+
+    <div id="item-list">
+      ${items.length===0? '<div class="empty-state"><span class="emoji">📋</span><p>No activities match this view.</p></div>' : renderItemList(items, trip)}
+    </div>
+  `;
+}
+
+function renderItemList(items, trip){
+  if(ui.dayFilter!=='all'){
+    return `<div class="drag-group" data-group="single">${items.map(i=>renderItemCard(i, trip)).join('')}</div>`;
+  }
+  // group by day when showing all (items already sorted earliest-to-latest)
+  const groups = {};
+  const noDate = [];
+  items.forEach(i=>{
+    if(!i.dateStart || !trip.startDate){ noDate.push(i); return; }
+    const d = daysBetween(trip.startDate, i.dateStart)+1;
+    groups[d] = groups[d]||[];
+    groups[d].push(i);
+  });
+  let html = '';
+  Object.keys(groups).sort((a,b)=>a-b).forEach(day=>{
+    html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(groups[day][0].dateStart)}</div>`;
+    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(i=>renderItemCard(i, trip)).join('')}</div>`;
+  });
+  if(noDate.length){
+    html += `<div class="day-group-label">No date set</div>`;
+    html += `<div class="drag-group" data-group="nodate">${noDate.map(i=>renderItemCard(i, trip)).join('')}</div>`;
+  }
+  return html;
+}
+
+function renderItemCard(item, trip){
+  return `
+    <div class="card item-card" id="item-${item.id}" draggable="true">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
+      <div class="item-type-badge">${TYPE_ICONS[item.type]||'📌'}</div>
+      <div class="item-main">
+        <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
+        <div class="item-meta">
+          <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
+          ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
+          ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
+          ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
+          ${item.link? `<span class="link-line">🔗 <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Link</a></span>`:''}
+          ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}">📎 ${escapeHtml(f.name)}</span>`).join('') : ''}
+        </div>
+        ${item.notes? `<div class="notes-preview">${item.notes}</div>`:''}
+      </div>
+      <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
+      <button class="item-edit-btn" onclick="toggleItemPopover(event,'${item.id}','${trip.id}')">⋮</button>
+    </div>`;
+}
+
+/* ---- Drag & drop reordering ---- */
+let dragSrcId = null;
+document.addEventListener('dragstart', e=>{
+  const card = e.target.closest('.item-card');
+  if(!card) return;
+  dragSrcId = card.id.replace('item-','');
+  e.dataTransfer.effectAllowed = 'move';
+  try{ e.dataTransfer.setData('text/plain', dragSrcId); }catch(err){}
+  card.classList.add('dragging');
+});
+document.addEventListener('dragend', e=>{
+  const card = e.target.closest('.item-card');
+  if(card) card.classList.remove('dragging');
+  document.querySelectorAll('.item-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+  dragSrcId = null;
+});
+document.addEventListener('dragover', e=>{
+  const card = e.target.closest('.item-card');
+  if(!card || !dragSrcId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('.item-card.drag-over').forEach(c=>{ if(c!==card) c.classList.remove('drag-over'); });
+  card.classList.add('drag-over');
+});
+document.addEventListener('drop', async e=>{
+  const targetCard = e.target.closest('.item-card');
+  if(!targetCard || !dragSrcId) return;
+  e.preventDefault();
+  const targetId = targetCard.id.replace('item-','');
+  targetCard.classList.remove('drag-over');
+  if(targetId===dragSrcId) return;
+  const group = targetCard.closest('.drag-group');
+  const srcCard = document.getElementById('item-'+dragSrcId);
+  if(!group || !srcCard || !group.contains(srcCard)) return;
+  const ids = [...group.querySelectorAll('.item-card')].map(c=>c.id.replace('item-',''));
+  const fromIdx = ids.indexOf(dragSrcId);
+  const toIdx = ids.indexOf(targetId);
+  if(fromIdx===-1 || toIdx===-1) return;
+  ids.splice(fromIdx,1);
+  ids.splice(toIdx,0,dragSrcId);
+  const trip = getTrip(ui.detailTripId);
+  const updates = [];
+  ids.forEach((id, idx)=>{
+    const it = trip.items.find(i=>i.id===id);
+    if(it && it.order!==idx){
+      it.order = idx;
+      updates.push(sb.from('activities').update({ sort_order: idx }).eq('id', id));
+    }
+  });
+  render(); // optimistic — reflect the new order immediately
+  if(updates.length) await Promise.all(updates);
+});
+
+function closePopovers(){
+  document.querySelectorAll('.popover').forEach(p=>p.remove());
+}
+function toggleItemPopover(e, itemId, tripId){
+  e.stopPropagation();
+  const existing = document.querySelector(`#item-${itemId} .popover`);
+  closePopovers();
+  if(existing) return;
+  const card = document.getElementById('item-'+itemId);
+  const pop = document.createElement('div');
+  pop.className='popover';
+  pop.innerHTML = `
+    <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
+    <button class="danger" onclick="showDeleteItemConfirm('${itemId}','${tripId}')">🗑️ Delete</button>
+  `;
+  card.appendChild(pop);
+}
+function showDeleteItemConfirm(itemId, tripId){
+  const card = document.getElementById('item-'+itemId);
+  closePopovers();
+  const box = document.createElement('div');
+  box.className='popover confirm-box';
+  box.innerHTML = `
+    <p>Delete this activity? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm" style="flex:1;" onclick="closePopovers()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteItem('${tripId}','${itemId}')">Delete</button>
+    </div>`;
+  card.appendChild(box);
+}
+async function deleteItem(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip.items.find(i=>i.id===itemId);
+  const storagePaths = (item && item.files || []).map(f=>f.storagePath);
+  const { error } = await sb.from('activities').delete().eq('id', itemId);
+  if(error){ alert('Could not delete activity: '+error.message); return; }
+  if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
+  trip.items = trip.items.filter(i=>i.id!==itemId);
+  render();
+}
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.popover') && !e.target.closest('.item-edit-btn')) closePopovers();
+});
+
+/* ---- Add / Edit Item Modal ---- */
+let tempFiles = [];
+let currentDraftId = null;      // storage folder for this session's uploads
+let currentEditingItemId = null; // set once the parent activity row exists in the DB
+function openAddItemModal(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
+  currentEditingItemId = itemId || null;
+  currentDraftId = itemId || uid();
+  tempFiles = item ? (item.files||[]).map(f=>({ ...f, pending:false })) : [];
+  const html = `
+    <div class="modal-header">
+      <h3>${item? 'Edit Activity':'Add Activity'}</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Type</label>
+        <select id="item-type-input">${TYPES.map(t=>`<option value="${t}" ${item&&item.type===t?'selected':''}>${t}</option>`).join('')}</select>
+      </div>
+      <div class="field">
+        <label class="field-label">Status</label>
+        <select id="item-status-input">${STATUSES.map(s=>`<option value="${s}" ${item&&item.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Name</label>
+      <input type="text" id="item-name-input" value="${item?escapeHtml(item.name):''}" placeholder="e.g. Flight to Tokyo">
+    </div>
+    <div class="field">
+      <label class="field-label">Booked by</label>
+      <select id="item-bookedby-input">
+        <option value="" ${item&&!item.bookedBy?'selected':''}>—</option>
+        ${BOOKED_BY.map(b=>`<option value="${b}" ${item&&item.bookedBy===b?'selected':''}>${b}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Cost (Total)</label>
+        <input type="number" min="0" step="0.01" id="item-cost-total-input" value="${item&&item.costTotal?item.costTotal:''}" placeholder="0.00" oninput="recalcPerPax(${trip.pax||1})">
+      </div>
+      <div class="field">
+        <label class="field-label">Cost (Per Pax)</label>
+        <input type="number" min="0" step="0.01" id="item-cost-perpax-input" value="${item&&item.costPerPax?item.costPerPax:''}" placeholder="0.00">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Date</label>
+        <input type="date" id="item-date-start-input" value="${item&&item.dateStart?item.dateStart:''}">
+      </div>
+      <div class="field">
+        <label class="field-label">End Date <span style="font-weight:400;">(optional, for multi-day)</span></label>
+        <input type="date" id="item-date-end-input" value="${item&&item.dateEnd?item.dateEnd:''}">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Time</label>
+        <input type="time" id="item-time-start-input" value="${item&&item.timeStart?item.timeStart:''}">
+      </div>
+      <div class="field">
+        <label class="field-label">End Time <span style="font-weight:400;">(optional)</span></label>
+        <input type="time" id="item-time-end-input" value="${item&&item.timeEnd?item.timeEnd:''}">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Link</label>
+      <input type="url" id="item-link-input" value="${item&&item.link?escapeHtml(item.link):''}" placeholder="https://…">
+    </div>
+    <div class="field">
+      <label class="field-label">File Upload</label>
+      <input type="file" id="item-file-input" multiple onchange="handleFileSelect(event)">
+      <div id="file-chip-list"></div>
+    </div>
+    <div class="field">
+      <label class="field-label">Notes</label>
+      <div class="rt-toolbar">
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+      </div>
+      <div class="rt-editor" id="item-notes-input" contenteditable="true">${item&&item.notes?item.notes:''}</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveItem('${tripId}','${item?item.id:''}')">Save Activity</button>
+    </div>
+  `;
+  openModal(html);
+  renderFileChips();
+}
+async function handleFileSelect(e){
+  const files = Array.from(e.target.files);
+  e.target.value = '';
+  if(!files.length) return;
+  for(const f of files){
+    const uploadingEntry = { name: f.name, storagePath: null, uploading: true };
+    tempFiles.push(uploadingEntry);
+    renderFileChips();
+    const path = `${currentUser.id}/${currentDraftId}/${Date.now()}_${f.name}`;
+    const { error } = await sb.storage.from('attachments').upload(path, f);
+    if(error){
+      alert('Upload failed for '+f.name+': '+error.message);
+      tempFiles.splice(tempFiles.indexOf(uploadingEntry), 1);
+      renderFileChips();
+      continue;
+    }
+    uploadingEntry.storagePath = path;
+    uploadingEntry.uploading = false;
+    uploadingEntry.pending = true; // not yet linked to an activity row
+    if(currentEditingItemId){
+      // parent activity already exists in the DB — link the file right away
+      const { data: row, error: linkErr } = await sb.from('activity_files')
+        .insert({ activity_id: currentEditingItemId, file_name: f.name, storage_path: path }).select().single();
+      if(!linkErr){ uploadingEntry.id = row.id; uploadingEntry.pending = false; }
+    }
+    renderFileChips();
+  }
+}
+function renderFileChips(){
+  const el = document.getElementById('file-chip-list');
+  if(!el) return;
+  el.innerHTML = tempFiles.map((f,idx)=>`
+    <div class="file-chip">
+      ${f.uploading ? `<span class="file-chip-name">📎 ${escapeHtml(f.name)} (uploading…)</span>` :
+        `<span class="file-chip-name" onclick="openFilePreviewByTemp(${idx})">📎 ${escapeHtml(f.name)}</span>`}
+      <button onclick="removeTempFile(${idx})" ${f.uploading?'disabled':''}>Remove</button>
+    </div>`).join('');
+}
+async function removeTempFile(idx){
+  const f = tempFiles[idx];
+  if(f && f.storagePath){
+    await sb.storage.from('attachments').remove([f.storagePath]).catch(()=>{});
+    if(f.id) await sb.from('activity_files').delete().eq('id', f.id).catch(()=>{});
+  }
+  tempFiles.splice(idx,1);
+  renderFileChips();
+}
+function recalcPerPax(pax){
+  const totalEl = document.getElementById('item-cost-total-input');
+  const perPaxEl = document.getElementById('item-cost-perpax-input');
+  if(!totalEl || !perPaxEl) return;
+  const total = parseFloat(totalEl.value) || 0;
+  const p = Number(pax) || 1;
+  perPaxEl.value = total ? (total/p).toFixed(2) : '';
+}
+
+async function saveItem(tripId, itemId){
+  const trip = getTrip(tripId);
+  const name = document.getElementById('item-name-input').value.trim();
+  if(!name){ alert('Please enter a name.'); return; }
+  const dateStart = document.getElementById('item-date-start-input').value;
+  const dateEnd = document.getElementById('item-date-end-input').value;
+  const timeStart = document.getElementById('item-time-start-input').value;
+  const timeEnd = document.getElementById('item-time-end-input').value;
+  if(dateEnd && dateStart && dateEnd < dateStart){ alert('End date must be on or after the start date.'); return; }
+  if(timeEnd && timeStart && (!dateEnd || dateEnd===dateStart) && timeEnd < timeStart){ alert('End time must be after the start time.'); return; }
+  if(tempFiles.some(f=>f.uploading)){ alert('Please wait for the attachment upload to finish.'); return; }
+
+  const payload = {
+    type: document.getElementById('item-type-input').value,
+    status: document.getElementById('item-status-input').value,
+    booked_by: document.getElementById('item-bookedby-input').value || null,
+    name,
+    cost_total: parseFloat(document.getElementById('item-cost-total-input').value) || 0,
+    cost_per_pax: parseFloat(document.getElementById('item-cost-perpax-input').value) || 0,
+    date_start: dateStart || null,
+    date_end: dateEnd || null,
+    time_start: timeStart || null,
+    time_end: timeEnd || null,
+    link: document.getElementById('item-link-input').value.trim() || null,
+    notes: document.getElementById('item-notes-input').innerHTML,
+  };
+
+  let savedId = itemId;
+  let savedOrder;
+  if(itemId){
+    const { error } = await sb.from('activities').update(payload).eq('id', itemId);
+    if(error){ alert('Could not save activity: '+error.message); return; }
+    savedOrder = trip.items.find(i=>i.id===itemId).order;
+  } else {
+    savedOrder = trip.items.reduce((m,i)=>Math.max(m,i.order||0),-1)+1;
+    const { data: row, error } = await sb.from('activities').insert({ ...payload, trip_id: tripId, sort_order: savedOrder }).select().single();
+    if(error){ alert('Could not create activity: '+error.message); return; }
+    savedId = row.id;
+    // link any files that were uploaded before this activity row existed
+    for(const f of tempFiles.filter(f=>f.pending)){
+      const { data: fr, error: fe } = await sb.from('activity_files')
+        .insert({ activity_id: savedId, file_name: f.name, storage_path: f.storagePath }).select().single();
+      if(!fe){ f.id = fr.id; f.pending = false; }
+    }
+  }
+
+  const localItem = {
+    id: savedId,
+    type: payload.type, status: payload.status, bookedBy: payload.booked_by || '',
+    name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
+    dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
+    timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
+    link: payload.link || '', notes: payload.notes, order: savedOrder,
+    files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
+  };
+  if(itemId){
+    Object.assign(trip.items.find(i=>i.id===itemId), localItem);
+  } else {
+    trip.items = trip.items||[];
+    trip.items.push(localItem);
+  }
+  closeModal(); render();
+}
+
+/* ---- Trip Expenses Modal ---- */
+let tripExpensesChart = null;
+function openExpensesModal(tripId){
+  renderExpensesModal(tripId);
+}
+function renderExpensesModal(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const filterType = ui.expensesModalType;
+  const filterBookedBy = ui.expensesModalBookedBy;
+  const items = (trip.items||[]).filter(i=> Number(i.costTotal)>0
+    && (filterType==='all' || i.type===filterType)
+    && (filterBookedBy==='all' || i.bookedBy===filterBookedBy));
+  const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
+  const html = `
+    <div class="modal-header">
+      <h3>Expenses — ${escapeHtml(trip.name)}</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="filter-bar">
+      <select class="filter-select" onchange="ui.expensesModalType=this.value;renderExpensesModal('${tripId}');">
+        <option value="all" ${filterType==='all'?'selected':''}>All Types</option>
+        ${TYPES.map(t=>`<option value="${t}" ${filterType===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.expensesModalBookedBy=this.value;renderExpensesModal('${tripId}');">
+        <option value="all" ${filterBookedBy==='all'?'selected':''}>Booked by: All</option>
+        ${BOOKED_BY.map(b=>`<option value="${b}" ${filterBookedBy===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+      </select>
+    </div>
+    ${items.length===0 ? '<p class="muted-note">No matching expenses.</p>' : `
+      <div style="height:220px;position:relative;"><canvas id="trip-expenses-chart"></canvas></div>
+      <div class="expenses-total">${fmtCost(total)}</div>
+      <div class="countdown-sub">total across ${items.length} item${items.length===1?'':'s'} · shown as total cost (not per pax)</div>
+    `}
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+  openModal(html, true);
+  renderTripExpensesChart(tripId);
+}
+function renderTripExpensesChart(tripId){
+  const canvas = document.getElementById('trip-expenses-chart');
+  if(!canvas || typeof Chart==='undefined') return;
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const filterType = ui.expensesModalType;
+  const filterBookedBy = ui.expensesModalBookedBy;
+  const byType = {};
+  (trip.items||[]).forEach(i=>{
+    if(Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
+      byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+    }
+  });
+  const labels = Object.keys(byType);
+  if(tripExpensesChart) tripExpensesChart.destroy();
+  tripExpensesChart = new Chart(canvas, {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data: labels.map(l=>byType[l]), backgroundColor: labels.map(l=>TYPE_COLORS[l]||'#999'), borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:11} } } }, cutout:'65%' }
+  });
+}
+
+/* ============ TODAY ============ */
+function renderToday(){
+  const t = todayStr();
+  const n = nowTime();
+  let allToday = [];
+  data.trips.forEach(trip=>{
+    (trip.items||[]).forEach(item=>{
+      const start = item.dateStart, end = item.dateEnd || item.dateStart;
+      if(start && start<=t && t<=end) allToday.push({...item, tripName: trip.name, tripId: trip.id});
+    });
+  });
+  allToday.sort((a,b)=> (a.timeStart||'99:99').localeCompare(b.timeStart||'99:99'));
+  // "upcoming" = ongoing multi-day items already in progress, or items starting today that haven't started yet
+  const upcoming = allToday.filter(i => i.dateStart < t || !i.timeStart || i.timeStart >= n);
+
+  const list = ui.todayShowAll ? allToday : upcoming;
+
+  return `
+    <div class="toolbar-row" style="margin-top:28px;">
+      <div>
+        <h1 class="page-title" style="margin:0;">Today</h1>
+        <div class="countdown-sub">${fmtDateLong(t)}</div>
+      </div>
+      <button class="btn" onclick="ui.todayShowAll=!ui.todayShowAll;render();">${ui.todayShowAll? 'Show upcoming only':'View all of today'}</button>
+    </div>
+    ${allToday.length===0 ? `
+      <div class="empty-state"><span class="emoji">☀️</span><p>Nothing on the itinerary for today.</p></div>
+    ` : list.length===0 ? `
+      <div class="empty-state"><span class="emoji">✅</span><p>You're all caught up for today.</p></div>
+    ` : `
+      <div class="section-title">${ui.todayShowAll? "Today's full itinerary" : "Coming up"}</div>
+      <div class="today-scroll">
+        ${list.map(i=>renderTodayCard(i)).join('')}
+      </div>
+    `}
+  `;
+}
+
+function renderTodayCard(item){
+  const t = todayStr();
+  const ongoing = item.dateStart < t; // started on an earlier day, still spanning today
+  const past = !ongoing && item.timeStart && item.timeStart < nowTime();
+  return `
+    <div class="card today-card" style="${past?'opacity:.55;':''}" onclick="openTripDetail('${item.tripId}')">
+      <div class="item-type-badge">${TYPE_ICONS[item.type]||'📌'}</div>
+      ${ongoing? '<div class="today-time" style="font-size:13px;color:var(--text-muted);">In progress</div>' :
+        item.timeStart? `<div class="today-time">${itemTimeLabel(item)}</div>` : '<div class="today-time" style="font-size:13px;color:var(--text-muted);">All day</div>'}
+      <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
+      <div class="item-meta"><span class="status-badge ${statusClass(item.status)}">${item.status}</span></div>
+      <div class="countdown-sub" style="margin-top:6px;">${escapeHtml(item.tripName)}</div>
+    </div>`;
+}
+
+/* ============ MODAL HELPERS ============ */
+function openModal(html, wide){
+  const modal = document.getElementById('modal-content');
+  modal.className = 'modal' + (wide ? ' modal-wide' : '');
+  modal.innerHTML = html;
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+function closeModal(){
+  document.getElementById('modal-overlay').classList.add('hidden');
+  document.getElementById('modal-content').innerHTML = '';
+  document.getElementById('modal-content').className = 'modal';
+}
+document.getElementById('modal-overlay').addEventListener('click', e=>{
+  if(e.target.id==='modal-overlay') closeModal();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  if(!document.getElementById('preview-overlay').classList.contains('hidden')) closeFilePreview();
+  else closeModal();
+});
+
+/* ---- File attachment preview (opens as an in-app pop-out instead of a new browser tab) ---- */
+function openFilePreview(url, name){
+  const ext = (name.split('.').pop()||'').toLowerCase();
+  const isImage = ['png','jpg','jpeg','gif','webp','svg'].includes(ext);
+  const isPdf = ext==='pdf';
+  let body;
+  if(isImage) body = `<img src="${url}" style="max-width:100%;border-radius:10px;display:block;margin:0 auto;">`;
+  else if(isPdf) body = `<iframe src="${url}" style="width:100%;height:65vh;border:1px solid var(--border);border-radius:10px;"></iframe>`;
+  else body = `<p class="muted-note">Preview isn't available for this file type, but you can open it below.</p>`;
+  document.getElementById('preview-content').innerHTML = `
+    <div class="modal-header"><h3 style="font-size:14px;word-break:break-all;padding-right:10px;">${escapeHtml(name)}</h3><button class="modal-close" onclick="closeFilePreview()">&times;</button></div>
+    ${body}
+    <div class="modal-footer">
+      <a class="btn" href="${url}" target="_blank" rel="noopener">Open / Download</a>
+      <button class="btn btn-primary" onclick="closeFilePreview()">Close</button>
+    </div>`;
+  document.getElementById('preview-overlay').classList.remove('hidden');
+}
+function closeFilePreview(){
+  document.getElementById('preview-overlay').classList.add('hidden');
+  document.getElementById('preview-content').innerHTML = '';
+}
+document.getElementById('preview-overlay').addEventListener('click', e=>{
+  if(e.target.id==='preview-overlay') closeFilePreview();
+});
+async function openFilePreviewFor(tripId, itemId, idx){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  const f = item && item.files && item.files[idx];
+  if(!f) return;
+  const { data, error } = await sb.storage.from('attachments').createSignedUrl(f.storagePath, 3600);
+  if(error){ alert('Could not open file: '+error.message); return; }
+  openFilePreview(data.signedUrl, f.name);
+}
+async function openFilePreviewByTemp(idx){
+  const f = tempFiles[idx];
+  if(!f || !f.storagePath) return;
+  const { data, error } = await sb.storage.from('attachments').createSignedUrl(f.storagePath, 3600);
+  if(error){ alert('Could not open file: '+error.message); return; }
+  openFilePreview(data.signedUrl, f.name);
+}
+
+/* ============ INIT ============ */
+initAuth();
+</script>
+</body>
+</html>
