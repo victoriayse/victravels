@@ -495,6 +495,7 @@ function dbActivityToItem(a, fileRows){
     timeStart: a.time_start ? a.time_start.slice(0,5) : '',
     timeEnd: a.time_end ? a.time_end.slice(0,5) : '',
     link: a.link || '',
+    mapsLink: a.maps_link || '',
     notes: a.notes || '',
     order: a.sort_order || 0,
     files: fileRows.filter(f=>f.activity_id===a.id).map(f=>({ id: f.id, name: f.file_name, storagePath: f.storage_path })),
@@ -1010,6 +1011,7 @@ function renderItemCard(item, trip){
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
           ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
           ${item.link? `<span class="link-line">🔗 <a href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Link</a></span>`:''}
+          ${item.mapsLink? `<span class="link-line">🧭 <a href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">Navigate Here</a></span>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
         ${item.notes? `<div class="notes-preview">${item.notes}</div>`:''}
@@ -1187,6 +1189,10 @@ function openAddItemModal(tripId, itemId){
       <input type="url" id="item-link-input" value="${item&&item.link?escapeHtml(item.link):''}" placeholder="https://…">
     </div>
     <div class="field">
+      <label class="field-label">Google Maps Link</label>
+      <input type="url" id="item-maps-input" value="${item&&item.mapsLink?escapeHtml(item.mapsLink):''}" placeholder="https://maps.google.com/…">
+    </div>
+    <div class="field">
       <label class="field-label">File Upload</label>
       <input type="file" id="item-file-input" multiple onchange="handleFileSelect(event)">
       <div id="file-chip-list"></div>
@@ -1288,6 +1294,7 @@ async function saveItem(tripId, itemId){
     time_start: timeStart || null,
     time_end: timeEnd || null,
     link: document.getElementById('item-link-input').value.trim() || null,
+    maps_link: document.getElementById('item-maps-input').value.trim() || null,
     notes: document.getElementById('item-notes-input').innerHTML,
   };
 
@@ -1316,7 +1323,7 @@ async function saveItem(tripId, itemId){
     name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
     dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
     timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
-    link: payload.link || '', notes: payload.notes, order: savedOrder,
+    link: payload.link || '', mapsLink: payload.maps_link || '', notes: payload.notes, order: savedOrder,
     files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
   };
   if(itemId){
