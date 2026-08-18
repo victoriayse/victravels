@@ -221,8 +221,10 @@
   .item-card{
     display:flex;align-items:center;gap:14px;padding:14px 16px;position:relative;margin-bottom:10px;
     transition:opacity .15s ease, box-shadow .2s ease, border-color .2s ease, transform .15s ease;
+    z-index:0;
   }
   .item-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-1px);}
+  .item-card:has(.popover){z-index:5;}
   .item-card.dragging{opacity:.4;}
   .item-card.drag-over{box-shadow:var(--shadow-hover);border-color:var(--primary);}
   .drag-handle{
@@ -1246,6 +1248,7 @@ function openAddItemModal(tripId, itemId){
   currentEditingItemId = itemId || null;
   currentDraftId = itemId || uid();
   tempFiles = item ? (item.files||[]).map(f=>({ ...f, pending:false })) : [];
+  modalPreventOutsideClose = true;
   const html = `
     <div class="modal-header">
       <h3>${item? 'Edit Activity':'Add Activity'}</h3>
@@ -1271,9 +1274,9 @@ function openAddItemModal(tripId, itemId){
     <div class="field">
       <label class="field-label">Card Color</label>
       <div style="display:flex;align-items:center;gap:10px;">
-        <input type="checkbox" id="item-color-enable" ${item&&item.cardColor?'checked':''} onchange="document.getElementById('item-color-input').disabled=!this.checked;" style="width:17px;height:17px;accent-color:var(--primary);cursor:pointer;">
-        <input type="color" id="item-color-input" value="${item&&item.cardColor?item.cardColor:'#0f5257'}" ${item&&item.cardColor?'':'disabled'} style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border-strong);cursor:pointer;">
-        <span class="muted-note">Custom accent color for this card</span>
+        <input type="color" id="item-color-input" value="${item&&item.cardColor?item.cardColor:'#0f5257'}" data-enabled="${item&&item.cardColor?'1':'0'}" onchange="this.dataset.enabled='1';" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border-strong);cursor:pointer;">
+        <button type="button" class="btn btn-sm" onclick="const el=document.getElementById('item-color-input');el.dataset.enabled='0';el.value='#0f5257';">Use default</button>
+        <span class="muted-note">Click the swatch to pick a color</span>
       </div>
     </div>
     <div class="field">
@@ -1417,7 +1420,7 @@ async function saveItem(tripId, itemId){
   if(timeEnd && timeStart && (!dateEnd || dateEnd===dateStart) && timeEnd < timeStart){ alert('End time must be after the start time.'); return; }
   if(tempFiles.some(f=>f.uploading)){ alert('Please wait for the attachment upload to finish.'); return; }
 
-  const colorEnabled = document.getElementById('item-color-enable').checked;
+  const colorEnabled = document.getElementById('item-color-input').dataset.enabled==='1';
   const payload = {
     type: document.getElementById('item-type-input').value,
     icon: document.getElementById('item-icon-input').value || null,
@@ -1597,6 +1600,7 @@ function renderTodayCard(item){
 }
 
 /* ============ MODAL HELPERS ============ */
+let modalPreventOutsideClose = false;
 function openModal(html, wide){
   const modal = document.getElementById('modal-content');
   modal.className = 'modal' + (wide ? ' modal-wide' : '');
@@ -1607,9 +1611,10 @@ function closeModal(){
   document.getElementById('modal-overlay').classList.add('hidden');
   document.getElementById('modal-content').innerHTML = '';
   document.getElementById('modal-content').className = 'modal';
+  modalPreventOutsideClose = false;
 }
 document.getElementById('modal-overlay').addEventListener('click', e=>{
-  if(e.target.id==='modal-overlay') closeModal();
+  if(e.target.id==='modal-overlay' && !modalPreventOutsideClose) closeModal();
 });
 document.addEventListener('keydown', e=>{
   if(e.key!=='Escape') return;
