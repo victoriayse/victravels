@@ -331,6 +331,12 @@
   .nav-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 3px 8px rgba(15,82,87,0.3);}
   .notes-preview{font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.5;}
   .notes-preview b,.notes-preview strong{font-weight:700;color:var(--text);}
+  .notes-preview.collapsed .notes-preview-content{max-height:38px;overflow:hidden;position:relative;}
+  .notes-preview.collapsed .notes-preview-content::after{content:'';position:absolute;bottom:0;left:0;right:0;height:18px;background:linear-gradient(transparent,var(--card-bg));}
+  .notes-preview.expanded .notes-preview-content{max-height:none;}
+  .notes-toggle{display:block;margin-top:4px;background:none;border:none;color:var(--primary);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
+  .notes-toggle:hover{text-decoration:underline;}
+  .dup-badge{display:inline-block;background:var(--bg-soft);color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:4px;}
 
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
@@ -517,10 +523,20 @@ function dbActivityToItem(a, fileRows){
     timeEnd: a.time_end ? a.time_end.slice(0,5) : '',
     link: a.link || '',
     mapsLink: a.maps_link || '',
+    cardColor: a.card_color || '',
+    isDuplicate: !!a.is_duplicate,
+    parentActivityId: a.parent_activity_id || null,
     notes: a.notes || '',
     order: a.sort_order || 0,
     files: fileRows.filter(f=>f.activity_id===a.id).map(f=>({ id: f.id, name: f.file_name, storagePath: f.storage_path })),
   };
+}
+function hexToRgba(hex, alpha){
+  if(!hex) return null;
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
+  if([r,g,b].some(isNaN)) return null;
+  return `rgba(${r},${g},${b},${alpha})`;
 }
 function getTrip(id){ return data.trips.find(t=>t.id===id); }
 function sortedTrips(){
@@ -641,7 +657,7 @@ function renderOverviewCard(trip){
 }
 
 function renderFlightCard(trip){
-  const flights = (trip.items||[]).filter(i=>i.type==='Flight').sort(compareItems);
+  const flights = (trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate).sort(compareItems);
   return `
     <div class="card">
       <div class="section-title">Flight Details</div>
@@ -659,7 +675,7 @@ function renderFlightCard(trip){
 }
 
 function renderAccommodationsCard(trip){
-  const stays = (trip.items||[]).filter(i=>i.type==='Stays').sort(compareItems);
+  const stays = (trip.items||[]).filter(i=>i.type==='Stays' && !i.isDuplicate).sort(compareItems);
   return `
     <div class="card">
       <div class="section-title">Accommodations</div>
@@ -680,7 +696,7 @@ function renderAccommodationsCard(trip){
 
 function renderExpensesCard(trip){
   const filter = ui.homeExpensesFilter;
-  const items = (trip.items||[]).filter(i=>Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
+  const items = (trip.items||[]).filter(i=>!i.isDuplicate && Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
   const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
   return `
     <div class="card">
@@ -706,7 +722,7 @@ function renderExpensesChart(){
   const filter = ui.homeExpensesFilter;
   const byType = {};
   (trip.items||[]).forEach(i=>{
-    if(Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+    if(!i.isDuplicate && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
   });
   const labels = Object.keys(byType);
   if(expensesChart) expensesChart.destroy();
@@ -720,7 +736,7 @@ function renderExpensesChart(){
 function renderTasksCard(trip){
   const manualTasks = trip.tasks||[];
   const autoTasks = (trip.items||[])
-    .filter(i=>i.status==='To Book')
+    .filter(i=>i.status==='To Book' && !i.isDuplicate)
     .sort(compareItems);
   const empty = manualTasks.length===0 && autoTasks.length===0;
   return `
@@ -815,7 +831,7 @@ function renderTrips(){
 }
 
 function renderTripCard(trip){
-  const total = (trip.items||[]).reduce((s,i)=>s+(Number(i.costTotal)||0),0);
+  const total = (trip.items||[]).reduce((s,i)=>i.isDuplicate?s:s+(Number(i.costTotal)||0),0);
   return `
     <div class="card trip-card" onclick="openTripDetail('${trip.id}')">
       <h3>${escapeHtml(trip.name)}</h3>
@@ -999,22 +1015,20 @@ function renderItemList(items, trip){
     return `<div class="drag-group" data-group="single">${items.map(i=>renderItemCard(i, trip)).join('')}</div>`;
   }
   // group by day when showing all (items already sorted earliest-to-latest).
-  // Items spanning multiple days are duplicated into every day they cross.
+  // Multi-day continuation duplicates are real rows with their own single-day date, so
+  // grouping purely by each item's own dateStart naturally places everything correctly.
   const groups = {};
   const noDate = [];
   items.forEach(i=>{
     if(!i.dateStart || !trip.startDate){ noDate.push(i); return; }
-    const startIdx = daysBetween(trip.startDate, i.dateStart)+1;
-    const endIdx = i.dateEnd ? daysBetween(trip.startDate, i.dateEnd)+1 : startIdx;
-    for(let d=startIdx; d<=endIdx; d++){
-      groups[d] = groups[d]||[];
-      groups[d].push({ item: i, primary: d===startIdx });
-    }
+    const d = daysBetween(trip.startDate, i.dateStart)+1;
+    groups[d] = groups[d]||[];
+    groups[d].push(i);
   });
   let html = '';
   Object.keys(groups).sort((a,b)=>a-b).forEach(day=>{
-    html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(addDays(trip.startDate, day-1))}</div>`;
-    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(g=>renderItemCard(g.item, trip, g.primary, day)).join('')}</div>`;
+    html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(groups[day][0].dateStart)}</div>`;
+    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(i=>renderItemCard(i, trip)).join('')}</div>`;
   });
   if(noDate.length){
     html += `<div class="day-group-label">No date set</div>`;
@@ -1023,15 +1037,21 @@ function renderItemList(items, trip){
   return html;
 }
 
-function renderItemCard(item, trip, primary, dayIdx){
-  const isPrimary = primary!==false;
-  const domId = isPrimary ? `item-${item.id}` : `item-${item.id}-dup${dayIdx}`;
+function renderItemCard(item, trip){
+  const accent = item.cardColor ? `border-left:5px solid ${item.cardColor};` : '';
+  const badgeStyle = item.cardColor ? `background:${hexToRgba(item.cardColor,0.18)};border-color:${hexToRgba(item.cardColor,0.4)};` : '';
+  const notesLong = item.notes && item.notes.replace(/<[^>]+>/g,'').length > 140;
+  const notesHtml = item.notes ? (
+    notesLong
+      ? `<div class="notes-preview collapsed" id="notes-${item.id}"><div class="notes-preview-content">${item.notes}</div><button type="button" class="notes-toggle" onclick="event.stopPropagation();toggleNotes('${item.id}')">Show more</button></div>`
+      : `<div class="notes-preview">${item.notes}</div>`
+  ) : '';
   return `
-    <div class="card item-card" id="${domId}" draggable="${isPrimary?'true':'false'}">
-      <span class="drag-handle" title="${isPrimary?'Drag to reorder':''}" ${isPrimary?'':'style="visibility:hidden;"'}>⠿</span>
-      <div class="item-type-badge">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
+    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}">
+      <span class="drag-handle" title="Drag to reorder">⠿</span>
+      <div class="item-type-badge" style="${badgeStyle}">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
       <div class="item-main">
-        <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
+        <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class=\"dup-badge\">Continued</span>':''}</div>
         <div class="item-meta">
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
@@ -1040,7 +1060,7 @@ function renderItemCard(item, trip, primary, dayIdx){
           ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigation</a>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
-        ${item.notes? `<div class="notes-preview">${item.notes}</div>`:''}
+        ${notesHtml}
       </div>
       <div class="item-side">
         <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
@@ -1048,6 +1068,14 @@ function renderItemCard(item, trip, primary, dayIdx){
       </div>
       <button class="item-edit-btn" onclick="toggleItemPopover(event,'${item.id}','${trip.id}')">⋮</button>
     </div>`;
+}
+function toggleNotes(itemId){
+  const wrap = document.getElementById('notes-'+itemId);
+  if(!wrap) return;
+  const expanded = wrap.classList.toggle('expanded');
+  wrap.classList.toggle('collapsed', !expanded);
+  const btn = wrap.querySelector('.notes-toggle');
+  if(btn) btn.textContent = expanded ? 'Show less' : 'Show more';
 }
 
 /* ---- Drag & drop reordering ---- */
@@ -1116,6 +1144,7 @@ function toggleItemPopover(e, itemId, tripId){
   pop.className='popover';
   pop.innerHTML = `
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
+    <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
   card.appendChild(pop);
@@ -1136,12 +1165,72 @@ function showDeleteItemConfirm(e, itemId, tripId){
 async function deleteItem(tripId, itemId){
   const trip = getTrip(tripId);
   const item = trip.items.find(i=>i.id===itemId);
-  const storagePaths = (item && item.files || []).map(f=>f.storagePath);
+  const children = trip.items.filter(i=>i.parentActivityId===itemId);
+  const storagePaths = [item, ...children].flatMap(it=>(it && it.files || []).map(f=>f.storagePath));
+  // Explicitly remove continuation duplicates too (belt-and-braces alongside the DB's own cascade).
+  if(children.length){
+    await sb.from('activities').delete().in('id', children.map(c=>c.id));
+  }
   const { error } = await sb.from('activities').delete().eq('id', itemId);
   if(error){ alert('Could not delete activity: '+error.message); return; }
   if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
-  trip.items = trip.items.filter(i=>i.id!==itemId);
+  trip.items = trip.items.filter(i=>i.id!==itemId && i.parentActivityId!==itemId);
   render();
+}
+async function duplicateItem(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip.items.find(i=>i.id===itemId);
+  if(!item) return;
+  const newOrder = trip.items.reduce((m,i)=>Math.max(m,i.order||0),-1)+1;
+  const payload = {
+    trip_id: tripId, type: item.type, icon: item.icon || null, status: item.status,
+    booked_by: item.bookedBy || null, name: item.name,
+    cost_total: item.costTotal || 0, cost_per_pax: item.costPerPax || 0,
+    date_start: item.dateStart || null, date_end: item.dateEnd || null,
+    time_start: item.timeStart || null, time_end: item.timeEnd || null,
+    link: item.link || null, maps_link: item.mapsLink || null,
+    card_color: item.cardColor || null, notes: item.notes || '', sort_order: newOrder,
+    is_duplicate: false, parent_activity_id: null,
+  };
+  const { data: row, error } = await sb.from('activities').insert(payload).select().single();
+  if(error){ alert('Could not duplicate activity: '+error.message); return; }
+  trip.items.push(dbActivityToItem(row, []));
+  await reconcileDuplicates(tripId, row.id, payload, newOrder);
+  render();
+}
+/* Keeps auto-generated multi-day "continuation" rows in sync with a parent activity's
+   date range, without touching any continuation rows the user has independently edited. */
+async function reconcileDuplicates(tripId, parentId, basePayload, order){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const dateStart = basePayload.date_start, dateEnd = basePayload.date_end;
+  const desiredDates = [];
+  if(dateStart && dateEnd && dateEnd > dateStart){
+    let d = addDays(dateStart, 1);
+    while(d <= dateEnd){ desiredDates.push(d); d = addDays(d, 1); }
+  }
+  const existingDups = trip.items.filter(i=>i.parentActivityId===parentId);
+  for(const dup of existingDups){
+    if(!desiredDates.includes(dup.dateStart)){
+      const storagePaths = (dup.files||[]).map(f=>f.storagePath);
+      await sb.from('activities').delete().eq('id', dup.id);
+      if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
+      trip.items = trip.items.filter(i=>i.id!==dup.id);
+    }
+  }
+  const stillExistingDates = trip.items.filter(i=>i.parentActivityId===parentId).map(i=>i.dateStart);
+  for(const d of desiredDates){
+    if(stillExistingDates.includes(d)) continue;
+    const { data: row, error } = await sb.from('activities').insert({
+      trip_id: tripId, type: basePayload.type, icon: basePayload.icon, status: basePayload.status,
+      booked_by: basePayload.booked_by, name: basePayload.name,
+      cost_total: basePayload.cost_total, cost_per_pax: basePayload.cost_per_pax,
+      date_start: d, date_end: d, time_start: null, time_end: null,
+      link: basePayload.link, maps_link: basePayload.maps_link, card_color: basePayload.card_color,
+      notes: basePayload.notes, sort_order: order, is_duplicate: true, parent_activity_id: parentId,
+    }).select().single();
+    if(!error) trip.items.push(dbActivityToItem(row, []));
+  }
 }
 document.addEventListener('click', (e)=>{
   if(!e.target.closest('.popover') && !e.target.closest('.item-edit-btn')) closePopovers();
@@ -1178,6 +1267,14 @@ function openAddItemModal(tripId, itemId){
         <option value="">Auto (based on type)</option>
         ${iconOptionsHtml(item&&item.icon?item.icon:'')}
       </select>
+    </div>
+    <div class="field">
+      <label class="field-label">Card Color</label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" id="item-color-enable" ${item&&item.cardColor?'checked':''} onchange="document.getElementById('item-color-input').disabled=!this.checked;" style="width:17px;height:17px;accent-color:var(--primary);cursor:pointer;">
+        <input type="color" id="item-color-input" value="${item&&item.cardColor?item.cardColor:'#0f5257'}" ${item&&item.cardColor?'':'disabled'} style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border-strong);cursor:pointer;">
+        <span class="muted-note">Custom accent color for this card</span>
+      </div>
     </div>
     <div class="field">
       <label class="field-label">Name</label>
@@ -1308,6 +1405,8 @@ function recalcPerPax(pax){
 
 async function saveItem(tripId, itemId){
   const trip = getTrip(tripId);
+  const existingItem = itemId ? trip.items.find(i=>i.id===itemId) : null;
+  const isEditingDuplicate = !!(existingItem && existingItem.isDuplicate);
   const name = document.getElementById('item-name-input').value.trim();
   if(!name){ alert('Please enter a name.'); return; }
   const dateStart = document.getElementById('item-date-start-input').value;
@@ -1318,6 +1417,7 @@ async function saveItem(tripId, itemId){
   if(timeEnd && timeStart && (!dateEnd || dateEnd===dateStart) && timeEnd < timeStart){ alert('End time must be after the start time.'); return; }
   if(tempFiles.some(f=>f.uploading)){ alert('Please wait for the attachment upload to finish.'); return; }
 
+  const colorEnabled = document.getElementById('item-color-enable').checked;
   const payload = {
     type: document.getElementById('item-type-input').value,
     icon: document.getElementById('item-icon-input').value || null,
@@ -1332,6 +1432,7 @@ async function saveItem(tripId, itemId){
     time_end: timeEnd || null,
     link: document.getElementById('item-link-input').value.trim() || null,
     maps_link: document.getElementById('item-maps-input').value.trim() || null,
+    card_color: colorEnabled ? document.getElementById('item-color-input').value : null,
     notes: document.getElementById('item-notes-input').innerHTML,
   };
 
@@ -1360,7 +1461,10 @@ async function saveItem(tripId, itemId){
     name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
     dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
     timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
-    link: payload.link || '', mapsLink: payload.maps_link || '', notes: payload.notes, order: savedOrder,
+    link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
+    isDuplicate: existingItem ? existingItem.isDuplicate : false,
+    parentActivityId: existingItem ? existingItem.parentActivityId : null,
+    notes: payload.notes, order: savedOrder,
     files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
   };
   if(itemId){
@@ -1368,6 +1472,9 @@ async function saveItem(tripId, itemId){
   } else {
     trip.items = trip.items||[];
     trip.items.push(localItem);
+  }
+  if(!isEditingDuplicate){
+    await reconcileDuplicates(tripId, savedId, payload, savedOrder);
   }
   closeModal(); render();
 }
@@ -1382,7 +1489,7 @@ function renderExpensesModal(tripId){
   if(!trip) return;
   const filterType = ui.expensesModalType;
   const filterBookedBy = ui.expensesModalBookedBy;
-  const items = (trip.items||[]).filter(i=> Number(i.costTotal)>0
+  const items = (trip.items||[]).filter(i=> !i.isDuplicate && Number(i.costTotal)>0
     && (filterType==='all' || i.type===filterType)
     && (filterBookedBy==='all' || i.bookedBy===filterBookedBy));
   const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
@@ -1422,7 +1529,7 @@ function renderTripExpensesChart(tripId){
   const filterBookedBy = ui.expensesModalBookedBy;
   const byType = {};
   (trip.items||[]).forEach(i=>{
-    if(Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
+    if(!i.isDuplicate && Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
       byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
     }
   });
@@ -1442,6 +1549,7 @@ function renderToday(){
   let allToday = [];
   data.trips.forEach(trip=>{
     (trip.items||[]).forEach(item=>{
+      if(item.isDuplicate) return;
       const start = item.dateStart, end = item.dateEnd || item.dateStart;
       if(start && start<=t && t<=end) allToday.push({...item, tripName: trip.name, tripId: trip.id});
     });
