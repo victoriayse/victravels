@@ -6,6 +6,8 @@
 <title>VicTravels</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -246,6 +248,7 @@
   .status-Booked{background:var(--success-light);color:var(--success);}
   .status-ToBook{background:var(--warning-light);color:var(--warning);}
   .item-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
+  .item-cover-img{width:88px;height:88px;object-fit:cover;border-radius:12px;flex-shrink:0;border:1px solid var(--border);}
   .item-cost{font-family:var(--font-serif);font-weight:600;font-size:14.5px;white-space:nowrap;}
   .item-bookedby{font-size:11.5px;color:var(--text-muted);white-space:nowrap;display:flex;align-items:center;gap:3px;}
   .item-edit-btn{
@@ -339,6 +342,16 @@
   .notes-toggle{display:block;margin-top:4px;background:none;border:none;color:var(--primary);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
   .notes-toggle:hover{text-decoration:underline;}
   .dup-badge{display:inline-block;background:var(--bg-soft);color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:4px;}
+
+  /* MAP */
+  #trip-map{font-family:var(--font-sans);}
+  .map-pin{
+    width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.35);border:2px solid #fff;
+  }
+  .map-pin span{transform:rotate(45deg);display:block;}
+  .leaflet-popup-content{font-family:var(--font-sans);font-size:13px;}
 
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
@@ -473,6 +486,10 @@ let ui = {
   expensesModalBookedBy: 'all',
 };
 let expensesChart = null;
+let lastTripDetailTrip = null;
+let lastTripDetailItems = [];
+let tripMapInstance = null;
+let tripMapRenderToken = 0;
 
 /* ---- Load everything from Supabase into the same in-memory shape the UI already expects ---- */
 async function loadAllData(){
@@ -528,6 +545,9 @@ function dbActivityToItem(a, fileRows){
     cardColor: a.card_color || '',
     isDuplicate: !!a.is_duplicate,
     parentActivityId: a.parent_activity_id || null,
+    lat: a.lat!=null ? Number(a.lat) : null,
+    lng: a.lng!=null ? Number(a.lng) : null,
+    coverImagePath: a.cover_image_path || '',
     notes: a.notes || '',
     order: a.sort_order || 0,
     files: fileRows.filter(f=>f.activity_id===a.id).map(f=>({ id: f.id, name: f.file_name, storagePath: f.storage_path })),
@@ -539,6 +559,31 @@ function hexToRgba(hex, alpha){
   const r = parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
   if([r,g,b].some(isNaN)) return null;
   return `rgba(${r},${g},${b},${alpha})`;
+}
+/* ---- Map pin geocoding ---- */
+function extractLatLngFromMapsLink(url){
+  if(!url) return null;
+  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if(m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  m = url.match(/[?&](?:q|query)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if(m) return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+  return null;
+}
+function extractPlaceNameFromMapsLink(url){
+  if(!url) return null;
+  let m = url.match(/\/maps\/place\/([^\/@]+)/);
+  if(m) return decodeURIComponent(m[1].replace(/\+/g,' '));
+  m = url.match(/[?&](?:q|query)=([^&]+)/);
+  if(m && !/^-?\d+\.\d+,-?\d+\.\d+$/.test(m[1])) return decodeURIComponent(m[1].replace(/\+/g,' '));
+  return null;
+}
+async function geocodePlace(query){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+    const arr = await res.json();
+    if(arr && arr[0]) return { lat: parseFloat(arr[0].lat), lng: parseFloat(arr[0].lon) };
+  }catch(e){}
+  return null;
 }
 function getTrip(id){ return data.trips.find(t=>t.id===id); }
 function sortedTrips(){
@@ -583,6 +628,80 @@ function render(){
 
 function afterRender(){
   if(ui.view==='home') renderExpensesChart();
+  if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
+    initTripMap(lastTripDetailTrip, lastTripDetailItems);
+  }
+}
+
+/* ---- Trip map (Leaflet + OpenStreetMap — free, no API key needed) ---- */
+const MAP_DAY_COLORS = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c'];
+function dayNumberFor(trip, item){
+  if(!item.dateStart || !trip.startDate) return null;
+  return daysBetween(trip.startDate, item.dateStart)+1;
+}
+function makeDayPinIcon(dayNum, color){
+  return L.divIcon({
+    className: '',
+    html: `<div class="map-pin" style="background:${color};"><span>${dayNum==null?'':dayNum}</span></div>`,
+    iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
+  });
+}
+async function initTripMap(trip, items){
+  const container = document.getElementById('trip-map');
+  const statusEl = document.getElementById('trip-map-status');
+  if(!container || typeof L==='undefined') return;
+  const myToken = ++tripMapRenderToken;
+  if(tripMapInstance){ tripMapInstance.remove(); tripMapInstance = null; }
+
+  const map = L.map(container, { scrollWheelZoom:false }).setView([20,0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 19,
+  }).addTo(map);
+  tripMapInstance = map;
+
+  const markers = [];
+  function fitToMarkers(){
+    if(!markers.length) return;
+    if(markers.length===1){ map.setView(markers[0].getLatLng(), 14); return; }
+    map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
+  }
+  function addPin(item){
+    if(item.lat==null || item.lng==null) return;
+    const dayNum = dayNumberFor(trip, item);
+    const color = MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
+    const marker = L.marker([item.lat, item.lng], { icon: makeDayPinIcon(dayNum, color) }).addTo(map);
+    marker.bindPopup(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${item.timeStart? '<br>'+itemTimeLabel(item):''}${dayNum? '<br>Day '+dayNum:''}`);
+    markers.push(marker);
+  }
+
+  const cached = items.filter(i=>i.lat!=null && i.lng!=null);
+  const needsGeocode = items.filter(i=>i.lat==null || i.lng==null);
+  cached.forEach(addPin);
+  fitToMarkers();
+
+  if(needsGeocode.length && statusEl) statusEl.textContent = `Placing ${needsGeocode.length} more pin${needsGeocode.length===1?'':'s'}…`;
+
+  for(const item of needsGeocode){
+    let coords = extractLatLngFromMapsLink(item.mapsLink);
+    if(!coords){
+      const q = extractPlaceNameFromMapsLink(item.mapsLink) || item.name;
+      if(q){
+        coords = await geocodePlace(q);
+        await new Promise(r=>setTimeout(r,1100)); // respect Nominatim's ~1 req/sec usage policy
+      }
+    }
+    if(tripMapRenderToken !== myToken) return; // a newer render superseded this one — stop
+    if(coords){
+      item.lat = coords.lat; item.lng = coords.lng;
+      sb.from('activities').update({ lat: coords.lat, lng: coords.lng }).eq('id', item.id).then(()=>{});
+      addPin(item);
+      fitToMarkers();
+    }
+  }
+  if(statusEl){
+    statusEl.textContent = markers.length ? '' : 'No locations to show yet — add a Google Maps link or a clear place name to your activities.';
+  }
 }
 
 /* ============ HOME ============ */
@@ -972,6 +1091,8 @@ function renderTripDetail(){
     items = items.filter(i=> itemMatchesDay(i, trip, Number(ui.dayFilter)));
   }
   items.sort(compareItems);
+  lastTripDetailTrip = trip;
+  lastTripDetailItems = items;
 
   return `
     <button class="back-link" style="margin-top:24px;" onclick="ui.view='trips';render();">&larr; Back to Trips</button>
@@ -986,6 +1107,13 @@ function renderTripDetail(){
         <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}')">+ Add Activity</button>
       </div>
     </div>
+
+    ${(trip.items||[]).length? `
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Map</div>
+      <div id="trip-map" style="height:360px;border-radius:12px;overflow:hidden;background:var(--bg-soft);"></div>
+      <div class="muted-note" id="trip-map-status" style="margin-top:8px;"></div>
+    </div>` : ''}
 
     <div class="filter-bar">
       <button class="day-btn ${ui.dayFilter==='all'?'active':''}" onclick="ui.dayFilter='all';render();">All Days</button>
@@ -1068,6 +1196,7 @@ function renderItemCard(item, trip){
         <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
         ${item.bookedBy? `<div class="item-bookedby">👤 ${escapeHtml(item.bookedBy)}</div>` : ''}
       </div>
+      ${item.coverImagePath? `<img class="item-cover-img" src="${coverPublicUrl(item.coverImagePath)}" alt="" loading="lazy">` : ''}
       <button class="item-edit-btn" onclick="toggleItemPopover(event,'${item.id}','${trip.id}')">⋮</button>
     </div>`;
 }
@@ -1168,7 +1297,12 @@ async function deleteItem(tripId, itemId){
   const trip = getTrip(tripId);
   const item = trip.items.find(i=>i.id===itemId);
   const children = trip.items.filter(i=>i.parentActivityId===itemId);
-  const storagePaths = [item, ...children].flatMap(it=>(it && it.files || []).map(f=>f.storagePath));
+  const storagePaths = [item, ...children].flatMap(it=>{
+    if(!it) return [];
+    const paths = (it.files||[]).map(f=>f.storagePath);
+    if(it.coverImagePath) paths.push(it.coverImagePath);
+    return paths;
+  });
   // Explicitly remove continuation duplicates too (belt-and-braces alongside the DB's own cascade).
   if(children.length){
     await sb.from('activities').delete().in('id', children.map(c=>c.id));
@@ -1215,6 +1349,7 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
   for(const dup of existingDups){
     if(!desiredDates.includes(dup.dateStart)){
       const storagePaths = (dup.files||[]).map(f=>f.storagePath);
+      if(dup.coverImagePath) storagePaths.push(dup.coverImagePath);
       await sb.from('activities').delete().eq('id', dup.id);
       if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
       trip.items = trip.items.filter(i=>i.id!==dup.id);
@@ -1242,12 +1377,16 @@ document.addEventListener('click', (e)=>{
 let tempFiles = [];
 let currentDraftId = null;      // storage folder for this session's uploads
 let currentEditingItemId = null; // set once the parent activity row exists in the DB
+let tempCoverPath = null;
+let originalCoverPath = null;
 function openAddItemModal(tripId, itemId){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
   currentEditingItemId = itemId || null;
   currentDraftId = itemId || uid();
   tempFiles = item ? (item.files||[]).map(f=>({ ...f, pending:false })) : [];
+  tempCoverPath = item && item.coverImagePath ? item.coverImagePath : null;
+  originalCoverPath = tempCoverPath;
   modalPreventOutsideClose = true;
   const html = `
     <div class="modal-header">
@@ -1329,6 +1468,11 @@ function openAddItemModal(tripId, itemId){
       <input type="url" id="item-maps-input" value="${item&&item.mapsLink?escapeHtml(item.mapsLink):''}" placeholder="https://maps.google.com/…">
     </div>
     <div class="field">
+      <label class="field-label">Cover Image</label>
+      <input type="file" accept="image/*" id="item-cover-input" onchange="handleCoverSelect(event)">
+      <div id="cover-preview" style="margin-top:8px;"></div>
+    </div>
+    <div class="field">
       <label class="field-label">File Upload</label>
       <input type="file" id="item-file-input" multiple onchange="handleFileSelect(event)">
       <div id="file-chip-list"></div>
@@ -1349,6 +1493,34 @@ function openAddItemModal(tripId, itemId){
   `;
   openModal(html);
   renderFileChips();
+  renderCoverPreview();
+}
+function coverPublicUrl(path){
+  if(!path) return '';
+  return sb.storage.from('attachments').getPublicUrl(path).data.publicUrl;
+}
+function renderCoverPreview(){
+  const el = document.getElementById('cover-preview');
+  if(!el) return;
+  el.innerHTML = tempCoverPath ? `
+    <div style="position:relative;display:inline-block;">
+      <img src="${coverPublicUrl(tempCoverPath)}" style="width:120px;height:90px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;">
+      <button type="button" onclick="removeCoverImage()" style="position:absolute;top:-8px;right:-8px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1;">&times;</button>
+    </div>` : '';
+}
+async function handleCoverSelect(e){
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  const path = `shared/${currentDraftId}/cover_${Date.now()}_${file.name}`;
+  const { error } = await sb.storage.from('attachments').upload(path, file);
+  if(error){ alert('Cover image upload failed: '+error.message); return; }
+  tempCoverPath = path;
+  renderCoverPreview();
+}
+function removeCoverImage(){
+  tempCoverPath = null;
+  renderCoverPreview();
 }
 async function handleFileSelect(e){
   const files = Array.from(e.target.files);
@@ -1436,8 +1608,15 @@ async function saveItem(tripId, itemId){
     link: document.getElementById('item-link-input').value.trim() || null,
     maps_link: document.getElementById('item-maps-input').value.trim() || null,
     card_color: colorEnabled ? document.getElementById('item-color-input').value : null,
+    cover_image_path: tempCoverPath || null,
     notes: document.getElementById('item-notes-input').innerHTML,
   };
+  // Re-geocode if the location-relevant fields changed, so stale coordinates don't stick around.
+  let coordsCleared = false;
+  if(existingItem && (existingItem.mapsLink !== (payload.maps_link||'') || existingItem.name !== payload.name)){
+    payload.lat = null; payload.lng = null; coordsCleared = true;
+  }
+  const oldCoverPath = originalCoverPath;
 
   let savedId = itemId;
   let savedOrder;
@@ -1465,11 +1644,17 @@ async function saveItem(tripId, itemId){
     dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
     timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
     link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
+    coverImagePath: payload.cover_image_path || '',
+    lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
+    lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
     isDuplicate: existingItem ? existingItem.isDuplicate : false,
     parentActivityId: existingItem ? existingItem.parentActivityId : null,
     notes: payload.notes, order: savedOrder,
     files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
   };
+  if(oldCoverPath && oldCoverPath !== tempCoverPath){
+    sb.storage.from('attachments').remove([oldCoverPath]).catch(()=>{});
+  }
   if(itemId){
     Object.assign(trip.items.find(i=>i.id===itemId), localItem);
   } else {
