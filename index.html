@@ -726,6 +726,12 @@ async function initTripMap(trip, items){
 
   if(needsGeocode.length && statusEl) statusEl.textContent = `Placing ${needsGeocode.length} more pin${needsGeocode.length===1?'':'s'}…`;
 
+  // Geocoding runs one request/second in the background (Nominatim's usage policy) and can
+  // take 10-20+ seconds for a trip with many un-cached pins. Re-fitting the map bounds after
+  // every single pin (each one an animated pan/zoom) kept the map — and the whole page, since
+  // it sits right behind the Add/Edit Activity modal — visibly janky for that whole stretch.
+  // Only re-fit once, after the batch finishes, so the map is otherwise idle while this runs.
+  let foundAny = false;
   for(const item of needsGeocode){
     let coords = extractLatLngFromMapsLink(item.mapsLink);
     if(!coords){
@@ -740,9 +746,10 @@ async function initTripMap(trip, items){
       item.lat = coords.lat; item.lng = coords.lng;
       sb.from('activities').update({ lat: coords.lat, lng: coords.lng }).eq('id', item.id).then(()=>{});
       addPin(item);
-      fitToMarkers();
+      foundAny = true;
     }
   }
+  if(foundAny) fitToMarkers();
   if(statusEl){
     statusEl.textContent = markers.length ? '' : 'No locations to show yet — add a Google Maps link or a clear place name to your activities.';
   }
@@ -1557,11 +1564,23 @@ function renderCoverPreview(){
       <button type="button" onclick="removeCoverImage()" style="position:absolute;top:-8px;right:-8px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1;">&times;</button>
     </div>` : '';
 }
+// Supabase Storage rejects object keys with spaces or other non-URL-safe characters
+// (common in default screenshot/download filenames like "Screenshot 2026-09-01 at
+// 5.06.33 PM.png") with an "Invalid key" error — sanitize before using in a path.
+// The original, human-readable name is kept separately wherever it's displayed.
+function sanitizeFileName(name){
+  const lastDot = name.lastIndexOf('.');
+  const base = lastDot > 0 ? name.slice(0, lastDot) : name;
+  const ext = lastDot > 0 ? name.slice(lastDot) : '';
+  const safeBase = base.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'file';
+  const safeExt = ext.replace(/[^a-zA-Z0-9.]+/g, '');
+  return safeBase + safeExt;
+}
 async function handleCoverSelect(e){
   const file = e.target.files[0];
   e.target.value = '';
   if(!file) return;
-  const path = `shared/${currentDraftId}/cover_${Date.now()}_${file.name}`;
+  const path = `shared/${currentDraftId}/cover_${Date.now()}_${sanitizeFileName(file.name)}`;
   const { error } = await sb.storage.from('attachments').upload(path, file);
   if(error){ alert('Cover image upload failed: '+error.message); return; }
   tempCoverPath = path;
@@ -1579,7 +1598,7 @@ async function handleFileSelect(e){
     const uploadingEntry = { name: f.name, storagePath: null, uploading: true };
     tempFiles.push(uploadingEntry);
     renderFileChips();
-    const path = `shared/${currentDraftId}/${Date.now()}_${f.name}`;
+    const path = `shared/${currentDraftId}/${Date.now()}_${sanitizeFileName(f.name)}`;
     const { error } = await sb.storage.from('attachments').upload(path, f);
     if(error){
       alert('Upload failed for '+f.name+': '+error.message);
