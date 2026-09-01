@@ -469,6 +469,16 @@ function itemMatchesDay(item, trip, dayNum){
   const end = item.dateEnd || item.dateStart;
   return dayDate >= item.dateStart && dayDate <= end;
 }
+function jumpToDateDay(tripId, dateStr){
+  if(!dateStr) return;
+  const trip = getTrip(tripId);
+  if(!trip || !trip.startDate) return;
+  const numDays = tripDays(trip);
+  let dayNum = daysBetween(trip.startDate, dateStr) + 1;
+  dayNum = Math.max(1, Math.min(numDays, dayNum));
+  ui.dayFilter = String(dayNum);
+  render();
+}
 
 /* ============ STATE ============ */
 let data = { trips: [] };
@@ -653,7 +663,7 @@ async function initTripMap(trip, items){
   const myToken = ++tripMapRenderToken;
   if(tripMapInstance){ tripMapInstance.remove(); tripMapInstance = null; }
 
-  const map = L.map(container, { scrollWheelZoom:false }).setView([20,0], 2);
+  const map = L.map(container, { scrollWheelZoom:false, zoomControl:false, touchZoom:true, tap:true, bounceAtZoomLimits:false }).setView([20,0], 2);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
@@ -1132,6 +1142,7 @@ function renderTripDetail(){
         <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
       </select>
+      ${trip.startDate? `<input type="date" class="filter-select" id="date-jump-input" min="${trip.startDate}" max="${trip.endDate||''}" onchange="jumpToDateDay('${trip.id}', this.value)" title="Jump to a date">` : ''}
     </div>
 
     <div id="item-list">
