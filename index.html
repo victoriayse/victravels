@@ -466,9 +466,13 @@ function itemTimeLabel(item){
 }
 function itemMatchesDay(item, trip, dayNum){
   if(!item.dateStart || !trip.startDate) return false;
+  // Multi-day items (dateEnd > dateStart) get a real continuation row per extra day
+  // (see reconcileDuplicates), each with its own single-day dateStart. So matching a
+  // day tab is a straight equality check — a range check here would make the original
+  // multi-day parent row bleed into every day it spans, double-showing it alongside
+  // its own continuation card (visible as a stray extra pin on the map, for instance).
   const dayDate = addDays(trip.startDate, dayNum-1);
-  const end = item.dateEnd || item.dateStart;
-  return dayDate >= item.dateStart && dayDate <= end;
+  return item.dateStart === dayDate;
 }
 function jumpToDateDay(tripId, dateStr){
   if(!dateStr) return;
