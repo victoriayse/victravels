@@ -656,6 +656,34 @@ function makeDayPinIcon(dayNum, color){
     iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
   });
 }
+// Real touchscreens get pinch-zoom for free from Leaflet's touchZoom handler.
+// Trackpads report pinch gestures differently per browser: Chrome/Firefox fire
+// wheel events with ctrlKey=true, Safari fires gesturestart/change/end with a
+// scale factor. scrollWheelZoom stays off (so a plain two-finger scroll pans the
+// page, not the map) — this only reacts to the pinch-specific signals.
+function enableTrackpadPinchZoom(map, container){
+  container.addEventListener('wheel', e=>{
+    if(!e.ctrlKey) return;
+    e.preventDefault();
+    const targetZoom = map.getZoom() - e.deltaY * 0.015;
+    map.setZoom(targetZoom, { animate:false });
+  }, { passive:false });
+
+  let gestureStartZoom = null;
+  container.addEventListener('gesturestart', e=>{
+    e.preventDefault();
+    gestureStartZoom = map.getZoom();
+  });
+  container.addEventListener('gesturechange', e=>{
+    e.preventDefault();
+    if(gestureStartZoom==null) return;
+    map.setZoom(gestureStartZoom + Math.log2(e.scale), { animate:false });
+  });
+  container.addEventListener('gestureend', e=>{
+    e.preventDefault();
+    gestureStartZoom = null;
+  });
+}
 async function initTripMap(trip, items){
   const container = document.getElementById('trip-map');
   const statusEl = document.getElementById('trip-map-status');
@@ -669,6 +697,7 @@ async function initTripMap(trip, items){
     maxZoom: 19,
   }).addTo(map);
   tripMapInstance = map;
+  enableTrackpadPinchZoom(map, container);
 
   const markers = [];
   function fitToMarkers(){
@@ -1142,7 +1171,10 @@ function renderTripDetail(){
         <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
       </select>
-      ${trip.startDate? `<input type="date" class="filter-select" id="date-jump-input" min="${trip.startDate}" max="${trip.endDate||''}" onchange="jumpToDateDay('${trip.id}', this.value)" title="Jump to a date">` : ''}
+      ${trip.startDate? `<select class="filter-select" onchange="if(this.value)jumpToDateDay('${trip.id}', this.value);" title="Jump to a date">
+        <option value="">Jump to date</option>
+        ${Array.from({length:numDays}).map((_,i)=>{ const d = addDays(trip.startDate, i); return `<option value="${d}">${fmtDateShort(d)}</option>`; }).join('')}
+      </select>` : ''}
     </div>
 
     <div id="item-list">
