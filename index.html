@@ -247,6 +247,7 @@
   }
   .status-Booked{background:var(--success-light);color:var(--success);}
   .status-ToBook{background:var(--warning-light);color:var(--warning);}
+  .status-Nil{background:var(--bg-soft);color:var(--text-muted);}
   .item-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
   .item-cover-img{width:88px;height:88px;object-fit:cover;border-radius:12px;flex-shrink:0;border:1px solid var(--border);}
   .item-cost{font-family:var(--font-serif);font-weight:600;font-size:14.5px;white-space:nowrap;}
@@ -385,7 +386,7 @@
 const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Misc:'📌'};
 const TYPES = ['Flight','Transport','Food','Activity','Stays','Misc'];
 const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Misc:'#948d7c'};
-const STATUSES = ['Booked','To Book'];
+const STATUSES = ['Booked','To Book','Nil'];
 const BOOKED_BY = ['Victoria','Weng Seng'];
 const ICON_GROUPS = [
   { group:'Transport', icons:[['🚗','Car'],['🚆','Train'],['🚌','Bus'],['⛴️','Ferry'],['🚕','Taxi'],['🚲','Bike'],['🛵','Scooter'],['🚶','Walk'],['🚠','Cable Car']] },
@@ -865,6 +866,7 @@ function renderExpensesCard(trip){
         <button class="day-btn ${filter==='all'?'active':''}" onclick="ui.homeExpensesFilter='all';render();">All</button>
         <button class="day-btn ${filter==='Booked'?'active':''}" onclick="ui.homeExpensesFilter='Booked';render();">Booked</button>
         <button class="day-btn ${filter==='To Book'?'active':''}" onclick="ui.homeExpensesFilter='To Book';render();">To Book</button>
+        <button class="day-btn ${filter==='Nil'?'active':''}" onclick="ui.homeExpensesFilter='Nil';render();">Nil</button>
       </div>
       ${items.length===0 ? '<p class="muted-note">No costs logged yet.</p>' : `
         <div style="height:150px;position:relative;"><canvas id="expenses-chart"></canvas></div>
