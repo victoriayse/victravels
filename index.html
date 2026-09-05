@@ -777,7 +777,7 @@ async function initTripMap(trip, dayItems, poiItems){
     let icon, extra;
     if(isStar){
       icon = makeStarPinIcon();
-      extra = '<br>Place of Interest';
+      extra = item.type ? `<br>${item.icon || TYPE_ICONS[item.type] || ''} ${escapeHtml(item.type)}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
       const color = MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
