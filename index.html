@@ -1863,7 +1863,11 @@ async function removeTempFile(idx){
   const f = tempFiles[idx];
   if(f && f.storagePath){
     await sb.storage.from('attachments').remove([f.storagePath]).catch(()=>{});
-    if(f.id) await sb.from('activity_files').delete().eq('id', f.id).catch(()=>{});
+    // Note: Supabase's Postgrest query builder only implements .then(), not .catch(),
+    // so chaining .catch() directly on it throws a TypeError — must use try/catch instead.
+    if(f.id){
+      try{ await sb.from('activity_files').delete().eq('id', f.id); }catch(e){}
+    }
   }
   tempFiles.splice(idx,1);
   renderFileChips();
@@ -2172,10 +2176,10 @@ function renderGallery(){
       <h3 style="font-size:14px;">${multi? (galleryIndex+1)+' / '+galleryImages.length : 'Image'}</h3>
       <button class="modal-close" onclick="closeFilePreview()">&times;</button>
     </div>
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;min-height:200px;">
-      ${multi? `<button class="lightbox-nav" onclick="galleryNav(-1)">&#8249;</button>` : ''}
+    <div style="position:relative;display:flex;align-items:center;justify-content:center;min-height:200px;">
       <img src="${url}" style="max-width:100%;max-height:65vh;border-radius:10px;display:block;">
-      ${multi? `<button class="lightbox-nav" onclick="galleryNav(1)">&#8250;</button>` : ''}
+      ${multi? `<button class="lightbox-nav" onclick="galleryNav(-1)" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);">&#8249;</button>` : ''}
+      ${multi? `<button class="lightbox-nav" onclick="galleryNav(1)" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);">&#8250;</button>` : ''}
     </div>
     <div class="modal-footer">
       <button class="btn btn-primary" onclick="closeFilePreview()">Close</button>
