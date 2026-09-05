@@ -764,14 +764,17 @@ async function initTripMap(trip, dayItems, poiItems){
   enableTrackpadPinchZoom(map, container);
 
   const markers = [];
+  // Places of Interest stars still get plotted on the map (visible if they happen to fall
+  // within view), but they shouldn't be able to drag the zoom out to include a POI clear
+  // across the country — the auto-zoom fits to the day's own pins only, falling back to
+  // the star pins only when a day has no pins of its own to fit to (e.g. the POI page).
+  const fitMarkers = [];
   function fitToMarkers(){
-    if(!markers.length) return;
-    if(markers.length===1){ map.setView(markers[0].getLatLng(), 14); return; }
-    map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
+    const list = fitMarkers.length ? fitMarkers : markers;
+    if(!list.length) return;
+    if(list.length===1){ map.setView(list[0].getLatLng(), 14); return; }
+    map.fitBounds(L.featureGroup(list).getBounds().pad(0.2));
   }
-  // Places of Interest always render as a small star, regardless of which day tab is
-  // active — they aren't scheduled into a day, so a day-colored numbered pin wouldn't
-  // make sense for them anyway.
   function addPin(item, isStar){
     if(item.lat==null || item.lng==null) return;
     let icon, extra;
@@ -787,6 +790,7 @@ async function initTripMap(trip, dayItems, poiItems){
     const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
     marker.bindPopup(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${(!isStar && item.timeStart)? '<br>'+itemTimeLabel(item):''}${extra}`);
     markers.push(marker);
+    if(!isStar) fitMarkers.push(marker);
   }
 
   const combined = [
