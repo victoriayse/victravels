@@ -490,6 +490,29 @@ function jumpToDateDay(tripId, dateStr){
   ui.dayFilter = String(dayNum);
   render();
 }
+// Builds <option> list for the Add/Edit Activity date pickers: only dates within the
+// trip's own range, labeled with the day number and that day's custom title if one was set.
+function dayOptionLabel(trip, d, dayNum){
+  const title = trip.dayTitles && trip.dayTitles[dayNum] ? ` (${trip.dayTitles[dayNum]})` : '';
+  return `${fmtDateShort(d)} - Day ${dayNum}${title}`;
+}
+function dayOptionsHtml(trip, selectedDate, includeBlank){
+  const numDays = tripDays(trip);
+  let html = includeBlank ? `<option value="" ${!selectedDate?'selected':''}>—</option>` : '';
+  let matched = !selectedDate;
+  for(let i=0;i<numDays;i++){
+    const d = addDays(trip.startDate, i);
+    const dayNum = i+1;
+    if(d===selectedDate) matched = true;
+    html += `<option value="${d}" ${selectedDate===d?'selected':''}>${escapeHtml(dayOptionLabel(trip, d, dayNum))}</option>`;
+  }
+  if(!matched){
+    // Keep it instead of silently dropping it — e.g. the trip dates changed after this
+    // activity's date was set, so it no longer falls inside the (now different) range.
+    html += `<option value="${selectedDate}" selected>${escapeHtml(fmtDateShort(selectedDate))} (outside trip dates)</option>`;
+  }
+  return html;
+}
 async function saveDayTitle(tripId, dayNum, value){
   const trip = getTrip(tripId);
   if(!trip) return;
@@ -1522,11 +1545,15 @@ function openAddItemModal(tripId, itemId){
     <div class="field-row">
       <div class="field">
         <label class="field-label">Date</label>
-        <input type="date" id="item-date-start-input" value="${item&&item.dateStart?item.dateStart:''}">
+        ${trip.startDate
+          ? `<select id="item-date-start-input">${dayOptionsHtml(trip, item&&item.dateStart?item.dateStart:'', true)}</select>`
+          : `<input type="date" id="item-date-start-input" value="${item&&item.dateStart?item.dateStart:''}">`}
       </div>
       <div class="field">
         <label class="field-label">End Date <span style="font-weight:400;">(optional, for multi-day)</span></label>
-        <input type="date" id="item-date-end-input" value="${item&&item.dateEnd?item.dateEnd:''}">
+        ${trip.startDate
+          ? `<select id="item-date-end-input">${dayOptionsHtml(trip, item&&item.dateEnd?item.dateEnd:'', true)}</select>`
+          : `<input type="date" id="item-date-end-input" value="${item&&item.dateEnd?item.dateEnd:''}">`}
       </div>
     </div>
     <div class="field-row">
