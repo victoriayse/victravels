@@ -1379,6 +1379,7 @@ function toggleItemPopover(e, itemId, tripId){
   pop.innerHTML = `
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
     <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
+    <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
   card.appendChild(pop);
@@ -1471,6 +1472,49 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
     }).select().single();
     if(!error) trip.items.push(dbActivityToItem(row, []));
   }
+}
+function openMoveItemModal(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  if(!trip || !item) return;
+  if(!trip.startDate){ alert('Set this trip\'s dates first (Edit Trip) before moving activities.'); return; }
+  const html = `
+    <div class="modal-header"><h3>Move Activity</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Move "<strong>${escapeHtml(item.name||'Untitled')}</strong>" to a different day of the trip.</p>
+    <div class="field">
+      <label class="field-label">New Date</label>
+      <select id="move-item-date-input">${dayOptionsHtml(trip, item.dateStart||'', false)}</select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="moveItemToDate('${tripId}','${itemId}')">Move</button>
+    </div>`;
+  openModal(html);
+}
+async function moveItemToDate(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  const newStart = document.getElementById('move-item-date-input').value;
+  if(!trip || !item || !newStart) return;
+  // Preserve the activity's span (e.g. a 2-night stay stays a 2-night stay) by shifting
+  // date_end by the same number of days the start moved.
+  let newEnd = newStart;
+  if(item.dateStart && item.dateEnd && item.dateEnd > item.dateStart){
+    const span = daysBetween(item.dateStart, item.dateEnd);
+    newEnd = addDays(newStart, span);
+  }
+  const { error } = await sb.from('activities').update({ date_start: newStart, date_end: newEnd }).eq('id', itemId);
+  if(error){ alert('Could not move activity: '+error.message); return; }
+  item.dateStart = newStart;
+  item.dateEnd = newEnd;
+  await reconcileDuplicates(tripId, itemId, {
+    type: item.type, icon: item.icon||null, status: item.status, booked_by: item.bookedBy||null,
+    name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
+    date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
+    card_color: item.cardColor||null, notes: item.notes||'',
+  }, item.order||0);
+  closeModal();
+  render();
 }
 document.addEventListener('click', (e)=>{
   if(!e.target.closest('.popover') && !e.target.closest('.item-edit-btn')) closePopovers();
