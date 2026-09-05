@@ -358,6 +358,11 @@
     box-shadow:0 2px 6px rgba(0,0,0,0.35);border:2px solid #fff;
   }
   .map-pin span{transform:rotate(45deg);display:block;}
+  .map-star{
+    width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #c9971f;
+    color:#c9971f;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
+    box-shadow:0 2px 6px rgba(0,0,0,0.3);
+  }
   .leaflet-popup-content{font-family:var(--font-sans);font-size:13px;}
 
   .hidden{display:none !important;}
@@ -600,6 +605,7 @@ function dbActivityToItem(a, fileRows){
     mapsLink: a.maps_link || '',
     cardColor: a.card_color || '',
     isDuplicate: !!a.is_duplicate,
+    isPoi: !!a.is_poi,
     parentActivityId: a.parent_activity_id || null,
     lat: a.lat!=null ? Number(a.lat) : null,
     lng: a.lng!=null ? Number(a.lng) : null,
@@ -672,12 +678,13 @@ function setView(view){
 /* ============ RENDER DISPATCH ============ */
 function render(){
   document.querySelectorAll('#main-nav button').forEach(b=>{
-    b.classList.toggle('active', b.dataset.view===ui.view || (ui.view==='tripDetail' && b.dataset.view==='trips'));
+    b.classList.toggle('active', b.dataset.view===ui.view || ((ui.view==='tripDetail'||ui.view==='poi') && b.dataset.view==='trips'));
   });
   const app = document.getElementById('app');
   if(ui.view==='home') app.innerHTML = renderHome();
   else if(ui.view==='trips') app.innerHTML = renderTrips();
   else if(ui.view==='tripDetail') app.innerHTML = renderTripDetail();
+  else if(ui.view==='poi') app.innerHTML = renderPlacesOfInterest();
   else if(ui.view==='today') app.innerHTML = renderToday();
   afterRender();
 }
@@ -685,7 +692,10 @@ function render(){
 function afterRender(){
   if(ui.view==='home') renderExpensesChart();
   if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
-    initTripMap(lastTripDetailTrip, lastTripDetailItems);
+    initTripMap(lastTripDetailTrip, lastTripDetailItems, (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
+  }
+  if(ui.view==='poi' && lastTripDetailTrip && document.getElementById('trip-map')){
+    initTripMap(lastTripDetailTrip, [], (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
 }
 
@@ -700,6 +710,13 @@ function makeDayPinIcon(dayNum, color){
     className: '',
     html: `<div class="map-pin" style="background:${color};"><span>${dayNum==null?'':dayNum}</span></div>`,
     iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
+  });
+}
+function makeStarPinIcon(){
+  return L.divIcon({
+    className: '',
+    html: `<div class="map-star">★</div>`,
+    iconSize: [24,24], iconAnchor: [12,12], popupAnchor: [0,-12],
   });
 }
 // Real touchscreens get pinch-zoom for free from Leaflet's touchZoom handler.
@@ -730,7 +747,8 @@ function enableTrackpadPinchZoom(map, container){
     gestureStartZoom = null;
   });
 }
-async function initTripMap(trip, items){
+async function initTripMap(trip, dayItems, poiItems){
+  poiItems = poiItems || [];
   const container = document.getElementById('trip-map');
   const statusEl = document.getElementById('trip-map-status');
   if(!container || typeof L==='undefined') return;
@@ -751,18 +769,33 @@ async function initTripMap(trip, items){
     if(markers.length===1){ map.setView(markers[0].getLatLng(), 14); return; }
     map.fitBounds(L.featureGroup(markers).getBounds().pad(0.2));
   }
-  function addPin(item){
+  // Places of Interest always render as a small star, regardless of which day tab is
+  // active — they aren't scheduled into a day, so a day-colored numbered pin wouldn't
+  // make sense for them anyway.
+  function addPin(item, isStar){
     if(item.lat==null || item.lng==null) return;
-    const dayNum = dayNumberFor(trip, item);
-    const color = MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
-    const marker = L.marker([item.lat, item.lng], { icon: makeDayPinIcon(dayNum, color) }).addTo(map);
-    marker.bindPopup(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${item.timeStart? '<br>'+itemTimeLabel(item):''}${dayNum? '<br>Day '+dayNum:''}`);
+    let icon, extra;
+    if(isStar){
+      icon = makeStarPinIcon();
+      extra = '<br>Place of Interest';
+    } else {
+      const dayNum = dayNumberFor(trip, item);
+      const color = MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
+      icon = makeDayPinIcon(dayNum, color);
+      extra = dayNum? '<br>Day '+dayNum : '';
+    }
+    const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
+    marker.bindPopup(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${(!isStar && item.timeStart)? '<br>'+itemTimeLabel(item):''}${extra}`);
     markers.push(marker);
   }
 
-  const cached = items.filter(i=>i.lat!=null && i.lng!=null);
-  const needsGeocode = items.filter(i=>i.lat==null || i.lng==null);
-  cached.forEach(addPin);
+  const combined = [
+    ...dayItems.map(item=>({ item, star:false })),
+    ...poiItems.map(item=>({ item, star:true })),
+  ];
+  const cached = combined.filter(e=>e.item.lat!=null && e.item.lng!=null);
+  const needsGeocode = combined.filter(e=>e.item.lat==null || e.item.lng==null);
+  cached.forEach(e=>addPin(e.item, e.star));
   fitToMarkers();
 
   if(needsGeocode.length && statusEl) statusEl.textContent = `Placing ${needsGeocode.length} more pin${needsGeocode.length===1?'':'s'}…`;
@@ -773,7 +806,8 @@ async function initTripMap(trip, items){
   // it sits right behind the Add/Edit Activity modal — visibly janky for that whole stretch.
   // Only re-fit once, after the batch finishes, so the map is otherwise idle while this runs.
   let foundAny = false;
-  for(const item of needsGeocode){
+  for(const entry of needsGeocode){
+    const item = entry.item;
     let coords = extractLatLngFromMapsLink(item.mapsLink);
     if(!coords){
       const q = extractPlaceNameFromMapsLink(item.mapsLink) || item.name;
@@ -786,7 +820,7 @@ async function initTripMap(trip, items){
     if(coords){
       item.lat = coords.lat; item.lng = coords.lng;
       sb.from('activities').update({ lat: coords.lat, lng: coords.lng }).eq('id', item.id).then(()=>{});
-      addPin(item);
+      addPin(item, entry.star);
       foundAny = true;
     }
   }
@@ -864,13 +898,13 @@ function renderOverviewCard(trip){
       <div class="overview-stats">
         <div><div class="stat-num">${tripDays(trip)}</div><div class="stat-label">DAYS</div></div>
         <div><div class="stat-num">${countries.length}</div><div class="stat-label">COUNTRIES</div></div>
-        <div><div class="stat-num">${(trip.items||[]).length}</div><div class="stat-label">ACTIVITIES</div></div>
+        <div><div class="stat-num">${(trip.items||[]).filter(i=>!i.isPoi).length}</div><div class="stat-label">ACTIVITIES</div></div>
       </div>
     </div>`;
 }
 
 function renderFlightCard(trip){
-  const flights = (trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate).sort(compareItems);
+  const flights = (trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate && !i.isPoi).sort(compareItems);
   return `
     <div class="card">
       <div class="section-title">Flight Details</div>
@@ -888,7 +922,7 @@ function renderFlightCard(trip){
 }
 
 function renderAccommodationsCard(trip){
-  const stays = (trip.items||[]).filter(i=>i.type==='Stays' && !i.isDuplicate).sort(compareItems);
+  const stays = (trip.items||[]).filter(i=>i.type==='Stays' && !i.isDuplicate && !i.isPoi).sort(compareItems);
   return `
     <div class="card">
       <div class="section-title">Accommodations</div>
@@ -909,7 +943,7 @@ function renderAccommodationsCard(trip){
 
 function renderExpensesCard(trip){
   const filter = ui.homeExpensesFilter;
-  const items = (trip.items||[]).filter(i=>!i.isDuplicate && Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
+  const items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
   const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
   return `
     <div class="card">
@@ -936,7 +970,7 @@ function renderExpensesChart(){
   const filter = ui.homeExpensesFilter;
   const byType = {};
   (trip.items||[]).forEach(i=>{
-    if(!i.isDuplicate && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
   });
   const labels = Object.keys(byType);
   if(expensesChart) expensesChart.destroy();
@@ -950,7 +984,7 @@ function renderExpensesChart(){
 function renderTasksCard(trip){
   const manualTasks = trip.tasks||[];
   const autoTasks = (trip.items||[])
-    .filter(i=>i.status==='To Book' && !i.isDuplicate)
+    .filter(i=>i.status==='To Book' && !i.isDuplicate && !i.isPoi)
     .sort(compareItems);
   const empty = manualTasks.length===0 && autoTasks.length===0;
   return `
@@ -1045,14 +1079,14 @@ function renderTrips(){
 }
 
 function renderTripCard(trip){
-  const total = (trip.items||[]).reduce((s,i)=>i.isDuplicate?s:s+(Number(i.costTotal)||0),0);
+  const total = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+(Number(i.costTotal)||0),0);
   return `
     <div class="card trip-card" onclick="openTripDetail('${trip.id}')">
       <h3>${escapeHtml(trip.name)}</h3>
       <div class="trip-dates">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate) : 'No dates set'} · ${trip.pax||1} pax</div>
       <div>${(trip.countries||[]).slice(0,4).map(c=>`<span class="overview-chip">${escapeHtml(c)}</span>`).join('')}</div>
       <div class="trip-card-footer">
-        <span>${(trip.items||[]).length} activities</span>
+        <span>${(trip.items||[]).filter(i=>!i.isPoi).length} activities</span>
         <span>${fmtCost(total)}</span>
       </div>
     </div>`;
@@ -1176,7 +1210,7 @@ function renderTripDetail(){
   if(!trip){ ui.view='trips'; return renderTrips(); }
   const numDays = tripDays(trip);
 
-  let items = [...(trip.items||[])];
+  let items = (trip.items||[]).filter(i=>!i.isPoi);
   if(ui.typeFilter!=='all') items = items.filter(i=>i.type===ui.typeFilter);
   if(ui.statusFilter!=='all') items = items.filter(i=>i.status===ui.statusFilter);
   if(ui.bookedByFilter && ui.bookedByFilter!=='all') items = items.filter(i=>i.bookedBy===ui.bookedByFilter);
@@ -1228,6 +1262,7 @@ function renderTripDetail(){
         <option value="">Jump to date</option>
         ${Array.from({length:numDays}).map((_,i)=>{ const d = addDays(trip.startDate, i); return `<option value="${d}">${fmtDateShort(d)}</option>`; }).join('')}
       </select>` : ''}
+      <button class="btn btn-sm" onclick="ui.view='poi';render();">★ Places of Interest</button>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}')">+ Add Activity</button>
     </div>
 
@@ -1238,6 +1273,64 @@ function renderTripDetail(){
 
     <div id="item-list">
       ${items.length===0? '<div class="empty-state"><span class="emoji">📋</span><p>No activities match this view.</p></div>' : renderItemList(items, trip)}
+    </div>
+  `;
+}
+
+/* ============ PLACES OF INTEREST ============ */
+// A holding pen for spots the user might want to visit but hasn't scheduled into the
+// itinerary yet (no day tabs — items here aren't tied to a specific day). Reuses the same
+// item card / Add-Edit modal as the itinerary; the "Place of Interest" checkbox in that
+// modal is what routes an activity here instead of the day-by-day plan.
+function renderPlacesOfInterest(){
+  const trip = getTrip(ui.detailTripId);
+  if(!trip){ ui.view='trips'; return renderTrips(); }
+
+  let items = (trip.items||[]).filter(i=>i.isPoi);
+  if(ui.typeFilter!=='all') items = items.filter(i=>i.type===ui.typeFilter);
+  if(ui.statusFilter!=='all') items = items.filter(i=>i.status===ui.statusFilter);
+  if(ui.bookedByFilter && ui.bookedByFilter!=='all') items = items.filter(i=>i.bookedBy===ui.bookedByFilter);
+  items.sort((a,b)=> (a.order||0)-(b.order||0));
+  lastTripDetailTrip = trip;
+  lastTripDetailItems = items;
+
+  return `
+    <button class="back-link" style="margin-top:24px;" onclick="ui.view='tripDetail';render();">&larr; Back to ${escapeHtml(trip.name)}</button>
+    <div class="trip-detail-header">
+      <div>
+        <h1 class="page-title" style="margin:0 0 4px;">Places of Interest</h1>
+        <div class="countdown-sub">${escapeHtml(trip.name)} · spots to consider, not yet on the itinerary</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, true)">+ Add Place</button>
+      </div>
+    </div>
+
+    ${(trip.items||[]).some(i=>i.isPoi)? `
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Map</div>
+      <div id="trip-map" style="height:360px;border-radius:12px;overflow:hidden;background:var(--bg-soft);"></div>
+      <div class="muted-note" id="trip-map-status" style="margin-top:8px;"></div>
+    </div>` : ''}
+
+    <div class="filter-bar">
+      <select class="filter-select" onchange="ui.typeFilter=this.value;render();">
+        <option value="all" ${ui.typeFilter==='all'?'selected':''}>All Types</option>
+        ${TYPES.map(t=>`<option value="${t}" ${ui.typeFilter===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.statusFilter=this.value;render();">
+        <option value="all" ${ui.statusFilter==='all'?'selected':''}>All Statuses</option>
+        ${STATUSES.map(s=>`<option value="${s}" ${ui.statusFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.bookedByFilter=this.value;render();">
+        <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
+        ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+      </select>
+    </div>
+
+    <div id="item-list">
+      ${items.length===0? '<div class="empty-state"><span class="emoji">📍</span><p>No places of interest yet. Add spots you might want to visit.</p></div>'
+        : `<div class="drag-group" data-group="poi">${items.map(i=>renderItemCard(i, trip)).join('')}</div>`}
     </div>
   `;
 }
@@ -1430,7 +1523,7 @@ async function duplicateItem(tripId, itemId){
     time_start: item.timeStart || null, time_end: item.timeEnd || null,
     link: item.link || null, maps_link: item.mapsLink || null,
     card_color: item.cardColor || null, notes: item.notes || '', sort_order: newOrder,
-    is_duplicate: false, parent_activity_id: null,
+    is_duplicate: false, parent_activity_id: null, is_poi: item.isPoi || false,
   };
   const { data: row, error } = await sb.from('activities').insert(payload).select().single();
   if(error){ alert('Could not duplicate activity: '+error.message); return; }
@@ -1469,6 +1562,7 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
       date_start: d, date_end: d, time_start: null, time_end: null,
       link: basePayload.link, maps_link: basePayload.maps_link, card_color: basePayload.card_color,
       notes: basePayload.notes, sort_order: order, is_duplicate: true, parent_activity_id: parentId,
+      is_poi: basePayload.is_poi || false,
     }).select().single();
     if(!error) trip.items.push(dbActivityToItem(row, []));
   }
@@ -1511,7 +1605,7 @@ async function moveItemToDate(tripId, itemId){
     type: item.type, icon: item.icon||null, status: item.status, booked_by: item.bookedBy||null,
     name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
     date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
-    card_color: item.cardColor||null, notes: item.notes||'',
+    card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
   }, item.order||0);
   closeModal();
   render();
@@ -1526,7 +1620,7 @@ let currentDraftId = null;      // storage folder for this session's uploads
 let currentEditingItemId = null; // set once the parent activity row exists in the DB
 let tempCoverPath = null;
 let originalCoverPath = null;
-function openAddItemModal(tripId, itemId){
+function openAddItemModal(tripId, itemId, forcedIsPoi){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
   currentEditingItemId = itemId || null;
@@ -1535,10 +1629,17 @@ function openAddItemModal(tripId, itemId){
   tempCoverPath = item && item.coverImagePath ? item.coverImagePath : null;
   originalCoverPath = tempCoverPath;
   modalPreventOutsideClose = true;
+  const isPoiChecked = item ? !!item.isPoi : !!forcedIsPoi;
   const html = `
     <div class="modal-header">
-      <h3>${item? 'Edit Activity':'Add Activity'}</h3>
+      <h3>${item? (item.isPoi?'Edit Place':'Edit Activity') : (forcedIsPoi?'Add Place':'Add Activity')}</h3>
       <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="field">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;cursor:pointer;">
+        <input type="checkbox" id="item-poi-input" ${isPoiChecked?'checked':''} style="width:16px;height:16px;">
+        Place of Interest <span style="font-weight:400;color:var(--text-muted);">(not yet on the itinerary — shown as a star on the map)</span>
+      </label>
     </div>
     <div class="field-row">
       <div class="field">
@@ -1773,6 +1874,7 @@ async function saveItem(tripId, itemId){
     card_color: colorEnabled ? document.getElementById('item-color-input').value : null,
     cover_image_path: tempCoverPath || null,
     notes: document.getElementById('item-notes-input').innerHTML,
+    is_poi: document.getElementById('item-poi-input').checked,
   };
   // Re-geocode if the location-relevant fields changed, so stale coordinates don't stick around.
   let coordsCleared = false;
@@ -1811,6 +1913,7 @@ async function saveItem(tripId, itemId){
     lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
     lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
     isDuplicate: existingItem ? existingItem.isDuplicate : false,
+    isPoi: payload.is_poi,
     parentActivityId: existingItem ? existingItem.parentActivityId : null,
     notes: payload.notes, order: savedOrder,
     files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
@@ -1840,7 +1943,7 @@ function renderExpensesModal(tripId){
   if(!trip) return;
   const filterType = ui.expensesModalType;
   const filterBookedBy = ui.expensesModalBookedBy;
-  const items = (trip.items||[]).filter(i=> !i.isDuplicate && Number(i.costTotal)>0
+  const items = (trip.items||[]).filter(i=> !i.isDuplicate && !i.isPoi && Number(i.costTotal)>0
     && (filterType==='all' || i.type===filterType)
     && (filterBookedBy==='all' || i.bookedBy===filterBookedBy));
   const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
@@ -1880,7 +1983,7 @@ function renderTripExpensesChart(tripId){
   const filterBookedBy = ui.expensesModalBookedBy;
   const byType = {};
   (trip.items||[]).forEach(i=>{
-    if(!i.isDuplicate && Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
+    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
       byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
     }
   });
@@ -1900,7 +2003,7 @@ function renderToday(){
   let allToday = [];
   data.trips.forEach(trip=>{
     (trip.items||[]).forEach(item=>{
-      if(item.isDuplicate) return;
+      if(item.isDuplicate || item.isPoi) return;
       const start = item.dateStart, end = item.dateEnd || item.dateStart;
       if(start && start<=t && t<=end) allToday.push({...item, tripName: trip.name, tripId: trip.id});
     });
