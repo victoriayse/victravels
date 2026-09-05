@@ -663,6 +663,24 @@ function extractPlaceNameFromMapsLink(url){
   if(m && !/^-?\d+\.\d+,-?\d+\.\d+$/.test(m[1])) return decodeURIComponent(m[1].replace(/\+/g,' '));
   return null;
 }
+// Google Maps "share" links (from the Share button on the app) come back shortened,
+// e.g. https://maps.app.goo.gl/xxxx — these carry no lat/lng or place name in the URL
+// itself, so extractLatLngFromMapsLink/extractPlaceNameFromMapsLink can't read anything
+// from them until they're followed to their real, expanded maps.google.com URL.
+function isShortMapsLink(url){
+  if(!url) return false;
+  return /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(url.trim());
+}
+// A browser can't follow this redirect itself — a cross-origin fetch() to goo.gl is
+// blocked by CORS (Google doesn't send Access-Control-Allow-Origin on the redirect
+// chain) — so this asks a small Supabase Edge Function to follow it server-side instead.
+async function resolveMapsShortLink(url){
+  try{
+    const { data, error } = await sb.functions.invoke('resolve-maps-link', { body: { url } });
+    if(error || !data || !data.finalUrl) return null;
+    return data.finalUrl;
+  }catch(e){ return null; }
+}
 async function geocodePlace(query){
   try{
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
@@ -837,8 +855,20 @@ async function initTripMap(trip, dayItems, poiItems){
   for(const entry of needsGeocode){
     const item = entry.item;
     let coords = extractLatLngFromMapsLink(item.mapsLink);
+    let placeQuery = coords ? null : extractPlaceNameFromMapsLink(item.mapsLink);
+    // A shortened Google Maps share link (maps.app.goo.gl/...) has nothing readable in
+    // the URL itself — resolve it to its full URL first, so we geocode the actual pinned
+    // place instead of falling back to the activity's name (which, for something like a
+    // "Singapore to Amsterdam" flight, isn't a real place Nominatim can look up).
+    if(!coords && !placeQuery && isShortMapsLink(item.mapsLink)){
+      const resolved = await resolveMapsShortLink(item.mapsLink);
+      if(resolved){
+        coords = extractLatLngFromMapsLink(resolved);
+        if(!coords) placeQuery = extractPlaceNameFromMapsLink(resolved);
+      }
+    }
     if(!coords){
-      const q = extractPlaceNameFromMapsLink(item.mapsLink) || item.name;
+      const q = placeQuery || item.name;
       if(q){
         coords = await geocodePlace(q);
         await new Promise(r=>setTimeout(r,1100)); // respect Nominatim's ~1 req/sec usage policy
