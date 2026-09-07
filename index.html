@@ -138,6 +138,11 @@
   }
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
   @media (max-width:720px){ .home-grid{grid-template-columns:1fr;} }
+  .currency-row{display:flex;align-items:flex-end;gap:12px;}
+  .currency-field{flex:1;min-width:0;}
+  .currency-field input{width:100%;}
+  .currency-swap{padding-bottom:11px;font-size:16px;color:var(--text-muted);flex-shrink:0;}
+  @media (max-width:480px){ .currency-row{flex-wrap:wrap;} .currency-swap{display:none;} }
   .countdown-num{
     font-family:var(--font-serif);font-size:40px;font-weight:600;letter-spacing:-0.02em;
     background:linear-gradient(150deg,var(--primary),var(--primary-dark));
@@ -154,8 +159,10 @@
   .stat-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
   .flight-row{
     display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);
+    cursor:pointer;
   }
   .flight-row:last-child{border-bottom:none;}
+  .flight-row:hover .flight-name{text-decoration:underline;}
   .flight-icon{
     font-size:14px;display:flex;align-items:center;justify-content:center;
     width:30px;height:30px;border-radius:50%;background:var(--primary-light);flex-shrink:0;
@@ -856,7 +863,7 @@ function render(){
 }
 
 function afterRender(){
-  if(ui.view==='home') renderExpensesChart();
+  if(ui.view==='home'){ renderExpensesChart(); ensureCurrencyRate(); }
   if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
     initTripMap(lastTripDetailTrip, lastTripDetailItems, (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
@@ -1023,6 +1030,72 @@ async function initTripMap(trip, dayItems, poiItems){
   }
 }
 
+/* ---- Live EUR ⇄ SGD converter (Home page) ----
+   Uses Frankfurter (frankfurter.app), a free, no-API-key exchange rate service backed by
+   the European Central Bank's daily reference rates — the same kind of source Google's own
+   currency conversion draws from, so it tracks the same real-world rate. Fetched once and
+   cached (in memory + localStorage as an offline fallback), not re-fetched on every render. */
+const CURRENCY_RATE_CACHE_KEY = 'victravels_eur_sgd_rate';
+let currencyRate = null; // 1 EUR = currencyRate SGD
+let currencyRateDate = null;
+let currencyRateLoading = false;
+async function ensureCurrencyRate(){
+  if(currencyRate!=null || currencyRateLoading) return;
+  currencyRateLoading = true;
+  try{
+    const res = await fetch('https://api.frankfurter.app/latest?from=EUR&to=SGD');
+    const json = await res.json();
+    if(json && json.rates && json.rates.SGD){
+      currencyRate = json.rates.SGD;
+      currencyRateDate = json.date || null;
+      try{ localStorage.setItem(CURRENCY_RATE_CACHE_KEY, JSON.stringify({ rate: currencyRate, date: currencyRateDate })); }catch(e){}
+    }
+  }catch(e){}
+  if(currencyRate==null){
+    try{
+      const cached = JSON.parse(localStorage.getItem(CURRENCY_RATE_CACHE_KEY)||'null');
+      if(cached && cached.rate){ currencyRate = cached.rate; currencyRateDate = cached.date; }
+    }catch(e){}
+  }
+  currencyRateLoading = false;
+  const card = document.getElementById('currency-converter-card');
+  if(card) card.outerHTML = renderCurrencyConverterCard();
+}
+function renderCurrencyConverterCard(){
+  const rateLabel = currencyRate!=null
+    ? `Live rate: 1 EUR = ${currencyRate.toFixed(4)} SGD${currencyRateDate? ' (as of '+currencyRateDate+')' : ''}`
+    : 'Fetching live rate…';
+  return `
+    <div class="card" id="currency-converter-card">
+      <div class="section-title">EUR ⇄ SGD Converter</div>
+      <div class="currency-row">
+        <div class="currency-field">
+          <label class="field-label">EUR</label>
+          <input type="number" step="0.01" inputmode="decimal" id="currency-eur-input" placeholder="0.00" oninput="convertCurrency('eur')" ${currencyRate==null?'disabled':''}>
+        </div>
+        <span class="currency-swap">⇄</span>
+        <div class="currency-field">
+          <label class="field-label">SGD</label>
+          <input type="number" step="0.01" inputmode="decimal" id="currency-sgd-input" placeholder="0.00" oninput="convertCurrency('sgd')" ${currencyRate==null?'disabled':''}>
+        </div>
+      </div>
+      <p class="muted-note" style="margin-top:8px;margin-bottom:0;">${rateLabel}</p>
+    </div>`;
+}
+function convertCurrency(from){
+  if(currencyRate==null) return;
+  const eurInput = document.getElementById('currency-eur-input');
+  const sgdInput = document.getElementById('currency-sgd-input');
+  if(!eurInput || !sgdInput) return;
+  if(from==='eur'){
+    const v = parseFloat(eurInput.value);
+    sgdInput.value = isNaN(v) ? '' : (v*currencyRate).toFixed(2);
+  } else {
+    const v = parseFloat(sgdInput.value);
+    eurInput.value = isNaN(v) ? '' : (v/currencyRate).toFixed(2);
+  }
+}
+
 /* ============ HOME ============ */
 function renderHome(){
   if(data.trips.length===0){
@@ -1044,6 +1117,7 @@ function renderHome(){
         ${trips.map(t=>`<option value="${t.id}" ${t.id===trip.id?'selected':''}>${escapeHtml(t.name)}</option>`).join('')}
       </select>
     </div>
+    ${renderCurrencyConverterCard()}
     <div class="home-grid">
       ${renderCountdownCard(trip)}
       ${renderOverviewCard(trip)}
@@ -1103,7 +1177,7 @@ function renderFlightCard(trip){
       <div class="section-title">Flight Details</div>
       ${flights.length===0 ? '<p class="muted-note">No flights added yet.</p>' :
         flights.slice(0,4).map(f=>`
-          <div class="flight-row">
+          <div class="flight-row" onclick="openItemDetailModal('${trip.id}','${f.id}')">
             <span class="flight-icon">✈️</span>
             <div style="flex:1;min-width:0;">
               <div class="flight-name">${escapeHtml(f.name||'Untitled')}</div>
@@ -1123,7 +1197,7 @@ function renderAccommodationsCard(trip){
         stays.slice(0,4).map(s=>{
           const nights = (s.dateEnd && s.dateStart) ? Math.max(1, daysBetween(s.dateStart, s.dateEnd)) : null;
           return `
-          <div class="flight-row">
+          <div class="flight-row" onclick="openItemDetailModal('${trip.id}','${s.id}')">
             <span class="flight-icon">🛏️</span>
             <div style="flex:1;min-width:0;">
               <div class="flight-name">${escapeHtml(s.name||'Untitled')}</div>
