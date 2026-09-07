@@ -379,6 +379,7 @@
   .notes-preview.collapsed .notes-preview-content::after{content:'';position:absolute;bottom:0;left:0;right:0;height:18px;background:linear-gradient(transparent,var(--card-bg));}
   .notes-preview.expanded .notes-preview-content{max-height:none;}
   .notes-toggle{display:block;margin-top:4px;background:none;border:none;color:var(--primary);font-size:11.5px;font-weight:700;cursor:pointer;padding:0;}
+  .link-btn{background:none;border:none;color:var(--primary);font-size:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline;}
   .notes-toggle:hover{text-decoration:underline;}
   .dup-badge{display:inline-block;background:var(--bg-soft);color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:4px;}
 
@@ -1031,23 +1032,27 @@ async function initTripMap(trip, dayItems, poiItems){
 }
 
 /* ---- Live EUR ⇄ SGD converter (Home page) ----
-   Uses Frankfurter (frankfurter.app), a free, no-API-key exchange rate service backed by
-   the European Central Bank's daily reference rates — the same kind of source Google's own
-   currency conversion draws from, so it tracks the same real-world rate. Fetched once and
-   cached (in memory + localStorage as an offline fallback), not re-fetched on every render. */
+   Uses open.er-api.com, a free, no-API-key exchange rate service — the same kind of
+   real-world market rate Google's own currency conversion reflects (frankfurter.app,
+   tried first, turned out to be unreachable from this environment — "Failed to fetch"
+   with no useful error detail — so this is the source that actually works here).
+   Fetched once and cached (in memory + localStorage as an offline fallback), not
+   re-fetched on every render. */
 const CURRENCY_RATE_CACHE_KEY = 'victravels_eur_sgd_rate';
 let currencyRate = null; // 1 EUR = currencyRate SGD
 let currencyRateDate = null;
 let currencyRateLoading = false;
+let currencyRateFailed = false;
 async function ensureCurrencyRate(){
   if(currencyRate!=null || currencyRateLoading) return;
   currencyRateLoading = true;
+  currencyRateFailed = false;
   try{
-    const res = await fetch('https://api.frankfurter.app/latest?from=EUR&to=SGD');
+    const res = await fetch('https://open.er-api.com/v6/latest/EUR');
     const json = await res.json();
-    if(json && json.rates && json.rates.SGD){
+    if(json && json.result==='success' && json.rates && json.rates.SGD){
       currencyRate = json.rates.SGD;
-      currencyRateDate = json.date || null;
+      currencyRateDate = json.time_last_update_utc || null;
       try{ localStorage.setItem(CURRENCY_RATE_CACHE_KEY, JSON.stringify({ rate: currencyRate, date: currencyRateDate })); }catch(e){}
     }
   }catch(e){}
@@ -1057,16 +1062,28 @@ async function ensureCurrencyRate(){
       if(cached && cached.rate){ currencyRate = cached.rate; currencyRateDate = cached.date; }
     }catch(e){}
   }
+  if(currencyRate==null) currencyRateFailed = true;
   currencyRateLoading = false;
   const card = document.getElementById('currency-converter-card');
   if(card) card.outerHTML = renderCurrencyConverterCard();
 }
+function retryCurrencyRate(){
+  currencyRateFailed = false;
+  const card = document.getElementById('currency-converter-card');
+  if(card) card.outerHTML = renderCurrencyConverterCard();
+  ensureCurrencyRate();
+}
 function renderCurrencyConverterCard(){
-  const rateLabel = currencyRate!=null
-    ? `Live rate: 1 EUR = ${currencyRate.toFixed(4)} SGD${currencyRateDate? ' (as of '+currencyRateDate+')' : ''}`
-    : 'Fetching live rate…';
+  let rateLabel;
+  if(currencyRate!=null){
+    rateLabel = `Live rate: 1 EUR = ${currencyRate.toFixed(4)} SGD${currencyRateDate? ' (as of '+currencyRateDate+')' : ''}`;
+  } else if(currencyRateFailed){
+    rateLabel = `Couldn't reach the live rate service. <button type="button" class="link-btn" onclick="retryCurrencyRate()">Try again</button>`;
+  } else {
+    rateLabel = 'Fetching live rate…';
+  }
   return `
-    <div class="card" id="currency-converter-card">
+    <div class="card" id="currency-converter-card" style="margin-bottom:16px;">
       <div class="section-title">EUR ⇄ SGD Converter</div>
       <div class="currency-row">
         <div class="currency-field">
