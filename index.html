@@ -368,13 +368,20 @@
     display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;
     box-shadow:0 2px 6px rgba(0,0,0,0.35);border:2px solid #fff;
   }
-  .map-pin span{transform:rotate(45deg);display:block;}
+  .map-pin span{transform:rotate(45deg);display:block;font-size:14px;line-height:1;}
   .map-star{
     width:22px;height:22px;border-radius:50%;background:#fff;border:2px solid #c9971f;
     color:#c9971f;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
     box-shadow:0 2px 6px rgba(0,0,0,0.3);
   }
   .leaflet-popup-content{font-family:var(--font-sans);font-size:13px;}
+
+  /* PRESET COLOR SWATCHES (Card Color field) */
+  .color-swatch-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:2px;}
+  .color-swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.12);flex-shrink:0;}
+  .color-swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--card-bg),0 0 0 4px var(--text);}
+  .color-swatch-default{background:var(--bg-soft);color:var(--text-muted);font-size:12px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--border-strong);box-shadow:none;}
+  .color-swatch-default.active{border-style:solid;border-color:var(--text);color:var(--text);}
 
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
@@ -421,6 +428,24 @@ const ICON_GROUPS = [
 function iconOptionsHtml(selected){
   return ICON_GROUPS.map(g=>`<optgroup label="${g.group}">${g.icons.map(([emoji,label])=>
     `<option value="${emoji}" ${selected===emoji?'selected':''}>${emoji} ${label}</option>`).join('')}</optgroup>`).join('');
+}
+// Curated preset palette for card/pin colors — a fixed range of swatches to pick from
+// rather than an open color-picker, so every card and map pin stays visually consistent.
+const COLOR_PALETTE = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c','#c9a227','#5c6bc0','#8d6e63'];
+function renderColorSwatches(selected){
+  const isDefault = !selected;
+  let html = `<button type="button" class="color-swatch color-swatch-default ${isDefault?'active':''}" title="Automatic" onclick="selectCardColor(this,'')">&#10005;</button>`;
+  html += COLOR_PALETTE.map(hex=>`<button type="button" class="color-swatch ${selected===hex?'active':''}" style="background:${hex};" title="${hex}" onclick="selectCardColor(this,'${hex}')"></button>`).join('');
+  return html;
+}
+function selectCardColor(el, hex){
+  const input = document.getElementById('item-color-input');
+  if(!input) return;
+  input.value = hex;
+  input.dataset.enabled = hex ? '1' : '0';
+  const row = document.getElementById('color-swatch-row');
+  if(row) row.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
+  el.classList.add('active');
 }
 
 /* ============ SUPABASE ============ */
@@ -742,15 +767,17 @@ function afterRender(){
 }
 
 /* ---- Trip map (Leaflet + OpenStreetMap — free, no API key needed) ---- */
-const MAP_DAY_COLORS = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c'];
+// Falls back to cycling through the same preset palette used for card colors, so a
+// pin that hasn't been given a custom color still gets a sensible, distinct one.
+const MAP_DAY_COLORS = COLOR_PALETTE;
 function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
   return daysBetween(trip.startDate, item.dateStart)+1;
 }
-function makeDayPinIcon(dayNum, color){
+function makeDayPinIcon(glyph, color){
   return L.divIcon({
     className: '',
-    html: `<div class="map-pin" style="background:${color};"><span>${dayNum==null?'':dayNum}</span></div>`,
+    html: `<div class="map-pin" style="background:${color};"><span>${glyph||''}</span></div>`,
     iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
   });
 }
@@ -825,8 +852,11 @@ async function initTripMap(trip, dayItems, poiItems){
       extra = item.type ? `<br>${item.icon || TYPE_ICONS[item.type] || ''} ${escapeHtml(item.type)}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
-      const color = MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
-      icon = makeDayPinIcon(dayNum, color);
+      // A pin uses the same icon and color already set on the activity's card
+      // (customizable there) — only falls back to an automatic color if none was chosen.
+      const color = item.cardColor || MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
+      const glyph = item.icon || TYPE_ICONS[item.type] || '📌';
+      icon = makeDayPinIcon(glyph, color);
       extra = dayNum? '<br>Day '+dayNum : '';
     }
     const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
@@ -1723,11 +1753,9 @@ function openAddItemModal(tripId, itemId, forcedIsPoi){
     </div>
     <div class="field">
       <label class="field-label">Card Color</label>
-      <div style="display:flex;align-items:center;gap:10px;">
-        <input type="color" id="item-color-input" value="${item&&item.cardColor?item.cardColor:'#0f5257'}" data-enabled="${item&&item.cardColor?'1':'0'}" onchange="this.dataset.enabled='1';" style="width:44px;height:36px;padding:2px;border-radius:8px;border:1px solid var(--border-strong);cursor:pointer;">
-        <button type="button" class="btn btn-sm" onclick="const el=document.getElementById('item-color-input');el.dataset.enabled='0';el.value='#0f5257';">Use default</button>
-        <span class="muted-note">Click the swatch to pick a color</span>
-      </div>
+      <div class="color-swatch-row" id="color-swatch-row">${renderColorSwatches(item&&item.cardColor?item.cardColor:'')}</div>
+      <input type="hidden" id="item-color-input" value="${item&&item.cardColor?item.cardColor:''}" data-enabled="${item&&item.cardColor?'1':'0'}">
+      <span class="muted-note">Used for the card accent and its pin on the map. The &#10005; swatch resets to automatic.</span>
     </div>
     <div class="field">
       <label class="field-label">Name</label>
