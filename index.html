@@ -229,7 +229,7 @@
   .item-card{
     display:flex;align-items:center;gap:14px;padding:14px 16px;position:relative;margin-bottom:10px;
     transition:opacity .15s ease, box-shadow .2s ease, border-color .2s ease, transform .15s ease;
-    z-index:0;
+    z-index:0;cursor:pointer;
   }
   .item-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-1px);}
   .item-card:has(.popover){z-index:5;}
@@ -267,6 +267,20 @@
     display:flex;align-items:center;justify-content:center;line-height:1;
   }
   .lightbox-nav:hover{background:rgba(0,0,0,0.8);}
+
+  /* ACTIVITY DETAIL POPUP */
+  .detail-gallery-frame{position:relative;width:100%;border-radius:12px;overflow:hidden;background:var(--bg-soft);margin-bottom:16px;}
+  .detail-gallery-img{width:100%;height:320px;object-fit:cover;display:block;}
+  .detail-gallery-count{position:absolute;bottom:8px;right:10px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;}
+  .detail-meta-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;font-size:13px;color:var(--text-muted);}
+  .detail-type-pill{background:var(--bg-soft);padding:2px 10px;border-radius:999px;}
+  .detail-links-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .detail-notes{font-size:13.5px;line-height:1.65;color:var(--text);margin-bottom:16px;}
+  .detail-files{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;}
+  @media (max-width:480px){
+    .detail-gallery-img{height:220px;}
+    .lightbox-nav{width:32px;height:32px;font-size:18px;}
+  }
   .item-cost{font-family:var(--font-serif);font-weight:600;font-size:14.5px;white-space:nowrap;}
   .item-bookedby{font-size:11.5px;color:var(--text-muted);white-space:nowrap;display:flex;align-items:center;gap:3px;}
   .item-edit-btn{
@@ -375,13 +389,25 @@
     box-shadow:0 2px 6px rgba(0,0,0,0.3);
   }
   .leaflet-popup-content{font-family:var(--font-sans);font-size:13px;}
+  .leaflet-tooltip{font-family:var(--font-sans);font-size:12.5px;padding:6px 10px;}
 
-  /* PRESET COLOR SWATCHES (Card Color field) */
-  .color-swatch-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:2px;}
-  .color-swatch{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.12);flex-shrink:0;}
-  .color-swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--card-bg),0 0 0 4px var(--text);}
+  /* PRESET COLOR PICKER (Card Color field) — a trigger swatch that opens a panel of
+     fixed, precomputed swatches (quick colors + a hue/lightness grid), never an open
+     arbitrary color input. */
+  .color-picker{position:relative;display:inline-block;}
+  .color-trigger{width:36px;height:36px;border-radius:50%;border:2px solid var(--border-strong);cursor:pointer;font-size:14px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);padding:0;}
+  .color-trigger:hover{border-color:var(--text);}
+  .color-picker-panel{position:absolute;top:44px;left:0;z-index:50;background:var(--card-bg);border:1px solid var(--border-strong);border-radius:12px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);width:296px;}
+  .color-picker-panel.hidden{display:none !important;}
+  .color-quick-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .color-swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.12);flex-shrink:0;}
+  .color-swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--card-bg),0 0 0 3px var(--text);}
   .color-swatch-default{background:var(--bg-soft);color:var(--text-muted);font-size:12px;display:flex;align-items:center;justify-content:center;border:2px dashed var(--border-strong);box-shadow:none;}
   .color-swatch-default.active{border-style:solid;border-color:var(--text);color:var(--text);}
+  .color-grid{display:flex;flex-direction:column;gap:0;}
+  .color-grid-row{display:flex;}
+  .color-cell{width:20px;height:16px;border:none;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);flex:1;}
+  .color-cell.active{box-shadow:inset 0 0 0 2px var(--text);position:relative;z-index:1;}
 
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
@@ -429,23 +455,74 @@ function iconOptionsHtml(selected){
   return ICON_GROUPS.map(g=>`<optgroup label="${g.group}">${g.icons.map(([emoji,label])=>
     `<option value="${emoji}" ${selected===emoji?'selected':''}>${emoji} ${label}</option>`).join('')}</optgroup>`).join('');
 }
-// Curated preset palette for card/pin colors — a fixed range of swatches to pick from
-// rather than an open color-picker, so every card and map pin stays visually consistent.
+// Muted palette used when a card/pin has no custom color set — the map cycles through
+// these automatically so consecutive days stay visually distinct without any input.
 const COLOR_PALETTE = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c','#c9a227','#5c6bc0','#8d6e63'];
+
+// Classic 16-color "basic colors" row, same set used by MS Paint / Windows color pickers.
+const QUICK_COLORS = ['#000000','#ffffff','#ff0000','#00ff00','#0000ff','#ffff00','#00ffff','#ff00ff','#c0c0c0','#808080','#800000','#808000','#008000','#800080','#008080','#000080'];
+function hslToHex(h, s, l){
+  s/=100; l/=100;
+  const k = n => (n + h/30) % 12;
+  const a = s * Math.min(l, 1-l);
+  const f = n => l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n),1)));
+  const toHex = x => Math.round(255*x).toString(16).padStart(2,'0');
+  return '#'+toHex(f(0))+toHex(f(8))+toHex(f(4));
+}
+// A larger hue x lightness shade grid (12 hues + a grayscale column, 8 lightness rows),
+// like the "more colors" grid under a classic paint-program color picker — still a fixed,
+// precomputed set of swatches to click, not an open/arbitrary color input.
+const COLOR_GRID = (function(){
+  const hues = [0,25,45,65,90,140,170,190,210,240,270,300,330];
+  const lightness = [90,80,68,56,44,32,20,10];
+  return lightness.map(l => {
+    const row = hues.map(h => hslToHex(h, 85, l));
+    row.push(hslToHex(0,0,l));
+    return row;
+  });
+})();
 function renderColorSwatches(selected){
   const isDefault = !selected;
-  let html = `<button type="button" class="color-swatch color-swatch-default ${isDefault?'active':''}" title="Automatic" onclick="selectCardColor(this,'')">&#10005;</button>`;
-  html += COLOR_PALETTE.map(hex=>`<button type="button" class="color-swatch ${selected===hex?'active':''}" style="background:${hex};" title="${hex}" onclick="selectCardColor(this,'${hex}')"></button>`).join('');
-  return html;
+  const triggerStyle = selected ? `background:${selected};` : '';
+  const quickRow = `<button type="button" class="color-swatch color-swatch-default ${isDefault?'active':''}" data-hex="" title="Automatic" onclick="selectCardColor('')">&#10005;</button>` +
+    QUICK_COLORS.map(hex=>`<button type="button" class="color-swatch ${selected===hex?'active':''}" data-hex="${hex}" style="background:${hex};" title="${hex}" onclick="selectCardColor('${hex}')"></button>`).join('');
+  const grid = COLOR_GRID.map(row=>`<div class="color-grid-row">${row.map(hex=>
+    `<button type="button" class="color-cell ${selected===hex?'active':''}" data-hex="${hex}" style="background:${hex};" title="${hex}" onclick="selectCardColor('${hex}')"></button>`).join('')}</div>`).join('');
+  return `
+    <div class="color-picker" id="color-picker-wrap">
+      <button type="button" class="color-trigger" id="color-trigger" style="${triggerStyle}" onclick="toggleColorPicker()">${selected?'':'&#10005;'}</button>
+      <div class="color-picker-panel hidden" id="color-picker-panel">
+        <div class="color-quick-row">${quickRow}</div>
+        <div class="color-grid">${grid}</div>
+      </div>
+    </div>`;
 }
-function selectCardColor(el, hex){
+function toggleColorPicker(force){
+  const panel = document.getElementById('color-picker-panel');
+  if(!panel) return;
+  const show = typeof force === 'boolean' ? force : panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !show);
+}
+document.addEventListener('click', e=>{
+  const wrap = document.getElementById('color-picker-wrap');
+  const panel = document.getElementById('color-picker-panel');
+  if(!wrap || !panel || panel.classList.contains('hidden')) return;
+  if(!wrap.contains(e.target)) panel.classList.add('hidden');
+});
+function selectCardColor(hex){
   const input = document.getElementById('item-color-input');
   if(!input) return;
   input.value = hex;
   input.dataset.enabled = hex ? '1' : '0';
-  const row = document.getElementById('color-swatch-row');
-  if(row) row.querySelectorAll('.color-swatch').forEach(s=>s.classList.remove('active'));
-  el.classList.add('active');
+  document.querySelectorAll('.color-swatch,.color-cell').forEach(el=>{
+    el.classList.toggle('active', (el.dataset.hex||'') === hex);
+  });
+  const trigger = document.getElementById('color-trigger');
+  if(trigger){
+    trigger.style.background = hex || '';
+    trigger.innerHTML = hex ? '' : '&#10005;';
+  }
+  toggleColorPicker(false);
 }
 
 /* ============ SUPABASE ============ */
@@ -581,6 +658,27 @@ let ui = {
   expensesModalType: 'all',
   expensesModalBookedBy: 'all',
 };
+// Remembers which page (and which trip/day/filters) was open so a refresh lands back
+// where you were instead of resetting to Home.
+const UI_STATE_KEY = 'victravels_ui_state';
+function saveUiState(){
+  try{
+    const snapshot = {
+      view: ui.view, homeTripId: ui.homeTripId, detailTripId: ui.detailTripId,
+      dayFilter: ui.dayFilter, typeFilter: ui.typeFilter, statusFilter: ui.statusFilter,
+      bookedByFilter: ui.bookedByFilter,
+    };
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(snapshot));
+  }catch(e){}
+}
+function restoreUiState(){
+  try{
+    const raw = localStorage.getItem(UI_STATE_KEY);
+    if(!raw) return;
+    Object.assign(ui, JSON.parse(raw));
+  }catch(e){}
+}
+restoreUiState();
 let expensesChart = null;
 let lastTripDetailTrip = null;
 let lastTripDetailItems = [];
@@ -744,6 +842,7 @@ function setView(view){
 
 /* ============ RENDER DISPATCH ============ */
 function render(){
+  saveUiState();
   document.querySelectorAll('#main-nav button').forEach(b=>{
     b.classList.toggle('active', b.dataset.view===ui.view || ((ui.view==='tripDetail'||ui.view==='poi') && b.dataset.view==='trips'));
   });
@@ -860,7 +959,13 @@ async function initTripMap(trip, dayItems, poiItems){
       extra = dayNum? '<br>Day '+dayNum : '';
     }
     const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
-    marker.bindPopup(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${(!isStar && item.timeStart)? '<br>'+itemTimeLabel(item):''}${extra}`);
+    // Desktop (real mouse hover) gets a lightweight tooltip with the basics on hover;
+    // touch devices skip it since there's no hover to trigger it. Either way, clicking/
+    // tapping the pin opens the same full activity detail popup a card click does.
+    if(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches){
+      marker.bindTooltip(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${(!isStar && item.timeStart)? '<br>'+itemTimeLabel(item):''}${extra}`, { direction:'top', offset:[0,-24] });
+    }
+    marker.on('click', ()=> openItemDetailModal(trip.id, item.id));
     markers.push(marker);
     if(!isStar) fitMarkers.push(marker);
   }
@@ -1462,7 +1567,7 @@ function renderItemCard(item, trip){
       : `<div class="notes-preview">${linkedNotes}</div>`
   ) : '';
   return `
-    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}">
+    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}" onclick="openItemDetailModal('${trip.id}','${item.id}')">
       <span class="drag-handle" title="Drag to reorder">⠿</span>
       <div class="item-type-badge" style="${badgeStyle}">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
       <div class="item-main">
@@ -1471,8 +1576,8 @@ function renderItemCard(item, trip){
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
-          ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 Link</a>`:''}
-          ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigation</a>`:''}
+          ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 Link</a>`:''}
+          ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigation</a>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
         ${notesHtml}
@@ -1568,6 +1673,7 @@ function toggleItemPopover(e, itemId, tripId){
     <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
+  pop.addEventListener('click', e2=>e2.stopPropagation()); // keep clicks inside from also opening the card's detail popup
   card.appendChild(pop);
 }
 function showDeleteItemConfirm(e, itemId, tripId){
@@ -1581,6 +1687,7 @@ function showDeleteItemConfirm(e, itemId, tripId){
       <button class="btn btn-sm" style="flex:1;" onclick="closePopovers()">Cancel</button>
       <button class="btn btn-danger btn-sm" style="flex:1;" onclick="deleteItem('${tripId}','${itemId}')">Delete</button>
     </div>`;
+  box.addEventListener('click', e2=>e2.stopPropagation());
   card.appendChild(box);
 }
 async function deleteItem(tripId, itemId){
@@ -1753,7 +1860,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi){
     </div>
     <div class="field">
       <label class="field-label">Card Color</label>
-      <div class="color-swatch-row" id="color-swatch-row">${renderColorSwatches(item&&item.cardColor?item.cardColor:'')}</div>
+      ${renderColorSwatches(item&&item.cardColor?item.cardColor:'')}
       <input type="hidden" id="item-color-input" value="${item&&item.cardColor?item.cardColor:''}" data-enabled="${item&&item.cardColor?'1':'0'}">
       <span class="muted-note">Used for the card accent and its pin on the map. The &#10005; swatch resets to automatic.</span>
     </div>
@@ -2247,6 +2354,63 @@ function renderGallery(){
 function galleryNav(delta){
   galleryIndex = (galleryIndex + delta + galleryImages.length) % galleryImages.length;
   renderGallery();
+}
+
+/* ---- Activity detail popup: tapping a card (or its map pin) opens everything about
+   it in one place — images, meta, notes, and attachments — instead of only the edit form. */
+let detailGalleryImages = [];
+let detailGalleryIndex = 0;
+function openItemDetailModal(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  if(!trip || !item) return;
+  closePopovers();
+  detailGalleryImages = item.imagePaths || [];
+  detailGalleryIndex = 0;
+  const linkedNotes = linkifyNotes(item.notes);
+  const html = `
+    <div class="modal-header">
+      <h3>${escapeHtml(item.name||'Untitled')}</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    ${detailGalleryImages.length ? `<div id="detail-gallery">${renderDetailGalleryHtml()}</div>` : ''}
+    <div class="detail-meta-row">
+      <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
+      <span class="detail-type-pill">${item.icon || TYPE_ICONS[item.type] || '📌'} ${item.type}${item.isPoi?' · Place of Interest':''}</span>
+      ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
+      ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
+      ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
+      ${Number(item.costTotal)>0? `<span>💰 ${fmtCost(item.costTotal)}${item.costPerPax?' ('+fmtCost(item.costPerPax)+'/pax)':''}</span>`:''}
+    </div>
+    ${(item.link||item.mapsLink)? `<div class="detail-links-row">
+      ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 Link</a>`:''}
+      ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigation</a>`:''}
+    </div>` : ''}
+    ${item.notes? `<div class="detail-notes">${linkedNotes}</div>` : ''}
+    ${(item.files&&item.files.length)? `<div class="detail-files">
+      ${item.files.map((f,idx)=>`<span class="file-pill" onclick="openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('')}
+    </div>` : ''}
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal();openAddItemModal('${trip.id}','${item.id}')">✏️ Edit</button>
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>`;
+  openModal(html, true);
+}
+function renderDetailGalleryHtml(){
+  const multi = detailGalleryImages.length > 1;
+  const url = coverPublicUrl(detailGalleryImages[detailGalleryIndex]);
+  return `
+    <div class="detail-gallery-frame">
+      <img src="${url}" class="detail-gallery-img" alt="">
+      ${multi? `<button type="button" class="lightbox-nav" style="position:absolute;top:50%;left:8px;transform:translateY(-50%);" onclick="detailGalleryNav(-1)">&#8249;</button>` : ''}
+      ${multi? `<button type="button" class="lightbox-nav" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);" onclick="detailGalleryNav(1)">&#8250;</button>` : ''}
+      ${multi? `<span class="detail-gallery-count">${detailGalleryIndex+1} / ${detailGalleryImages.length}</span>` : ''}
+    </div>`;
+}
+function detailGalleryNav(delta){
+  detailGalleryIndex = (detailGalleryIndex + delta + detailGalleryImages.length) % detailGalleryImages.length;
+  const el = document.getElementById('detail-gallery');
+  if(el) el.innerHTML = renderDetailGalleryHtml();
 }
 
 /* ============ INIT ============ */
