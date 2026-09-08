@@ -136,6 +136,8 @@
     border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:9px 14px;
     font-size:14px;font-weight:600;background:#fff;color:var(--text);cursor:pointer;
   }
+  .search-bar{margin-bottom:14px;}
+  .search-input{width:100%;}
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
   @media (max-width:720px){ .home-grid{grid-template-columns:1fr;} }
   .currency-row{display:flex;align-items:flex-end;gap:12px;}
@@ -446,9 +448,9 @@
 
 <script>
 /* ============ UTILITIES ============ */
-const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Misc:'📌'};
-const TYPES = ['Flight','Transport','Food','Activity','Stays','Misc'];
-const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Misc:'#948d7c'};
+const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Shopping:'🛍️',Misc:'📌'};
+const TYPES = ['Flight','Transport','Food','Activity','Stays','Shopping','Misc'];
+const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Shopping:'#c9577a',Misc:'#948d7c'};
 const STATUSES = ['Booked','To Book','Nil'];
 const BOOKED_BY = ['Victoria','Weng Seng'];
 const ICON_GROUPS = [
@@ -661,6 +663,7 @@ let ui = {
   typeFilter: 'all',
   statusFilter: 'all',
   bookedByFilter: 'all',
+  searchQuery: '',
   todayShowAll: false,
   homeExpensesFilter: 'all',
   expensesModalType: 'all',
@@ -1489,11 +1492,10 @@ async function deleteTrip(tripId){
 }
 
 /* ============ TRIP DETAIL ============ */
-function renderTripDetail(){
-  const trip = getTrip(ui.detailTripId);
-  if(!trip){ ui.view='trips'; return renderTrips(); }
-  const numDays = tripDays(trip);
-
+function itemSearchText(item){
+  return [item.name, extractPlaceNameFromMapsLink(item.mapsLink), item.mapsLink].filter(Boolean).join(' ').toLowerCase();
+}
+function getFilteredTripItems(trip){
   let items = (trip.items||[]).filter(i=>!i.isPoi);
   if(ui.typeFilter!=='all') items = items.filter(i=>i.type===ui.typeFilter);
   if(ui.statusFilter!=='all') items = items.filter(i=>i.status===ui.statusFilter);
@@ -1501,9 +1503,35 @@ function renderTripDetail(){
   if(ui.dayFilter!=='all'){
     items = items.filter(i=> itemMatchesDay(i, trip, Number(ui.dayFilter)));
   }
+  const q = (ui.searchQuery||'').trim().toLowerCase();
+  if(q) items = items.filter(i=> itemSearchText(i).includes(q));
   items.sort(compareItems);
+  return items;
+}
+// Live-filters the item list as the user types in the search box, touching only
+// #item-list — a full render() would replace the search <input> itself and drop focus
+// mid-keystroke, since it's rebuilt fresh from the ui state on every render.
+function updateItemSearch(tripId, value){
+  ui.searchQuery = value;
+  saveUiState();
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const items = getFilteredTripItems(trip);
+  lastTripDetailItems = items;
+  const listEl = document.getElementById('item-list');
+  if(listEl) listEl.innerHTML = items.length===0? '<div class="empty-state"><span class="emoji">📋</span><p>No activities match this view.</p></div>' : renderItemList(items, trip);
+}
+function renderTripDetail(){
+  const trip = getTrip(ui.detailTripId);
+  if(!trip){ ui.view='trips'; return renderTrips(); }
+  const numDays = tripDays(trip);
+
+  const items = getFilteredTripItems(trip);
   lastTripDetailTrip = trip;
   lastTripDetailItems = items;
+  // Prefills the Add Activity date to the day currently being viewed, so creating an
+  // activity while on Day 3's tab doesn't default to a blank/unrelated date.
+  const addDefaultDate = (ui.dayFilter!=='all' && trip.startDate) ? addDays(trip.startDate, Number(ui.dayFilter)-1) : '';
 
   return `
     <button class="back-link" style="margin-top:24px;" onclick="ui.view='trips';render();">&larr; Back to Trips</button>
@@ -1547,7 +1575,11 @@ function renderTripDetail(){
         ${Array.from({length:numDays}).map((_,i)=>{ const d = addDays(trip.startDate, i); return `<option value="${d}">${fmtDateShort(d)}</option>`; }).join('')}
       </select>` : ''}
       <button class="btn btn-sm" onclick="ui.view='poi';render();">★ Places of Interest</button>
-      <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}')">+ Add Activity</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+ Add Activity</button>
+    </div>
+
+    <div class="search-bar">
+      <input type="text" class="search-input" placeholder="🔍 Search by activity name or location…" value="${escapeHtml(ui.searchQuery||'')}" oninput="updateItemSearch('${trip.id}', this.value)">
     </div>
 
     ${ui.dayFilter!=='all' ? `
@@ -1585,9 +1617,6 @@ function renderPlacesOfInterest(){
         <h1 class="page-title" style="margin:0 0 4px;">Places of Interest</h1>
         <div class="countdown-sub">${escapeHtml(trip.name)} · spots to consider, not yet on the itinerary</div>
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, true)">+ Add Place</button>
-      </div>
     </div>
 
     ${(trip.items||[]).some(i=>i.isPoi)? `
@@ -1610,6 +1639,7 @@ function renderPlacesOfInterest(){
         <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
       </select>
+      <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, true)">+ Add Place</button>
     </div>
 
     <div id="item-list">
@@ -1911,9 +1941,10 @@ let currentDraftId = null;      // storage folder for this session's uploads
 let currentEditingItemId = null; // set once the parent activity row exists in the DB
 let tempCoverPaths = [];
 let originalCoverPaths = [];
-function openAddItemModal(tripId, itemId, forcedIsPoi){
+function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
+  const dateStartDefault = item ? (item.dateStart||'') : (defaultDate||'');
   currentEditingItemId = itemId || null;
   currentDraftId = itemId || uid();
   tempFiles = item ? (item.files||[]).map(f=>({ ...f, pending:false })) : [];
@@ -1980,8 +2011,8 @@ function openAddItemModal(tripId, itemId, forcedIsPoi){
       <div class="field">
         <label class="field-label">Date</label>
         ${trip.startDate
-          ? `<select id="item-date-start-input">${dayOptionsHtml(trip, item&&item.dateStart?item.dateStart:'', true)}</select>`
-          : `<input type="date" id="item-date-start-input" value="${item&&item.dateStart?item.dateStart:''}">`}
+          ? `<select id="item-date-start-input">${dayOptionsHtml(trip, dateStartDefault, true)}</select>`
+          : `<input type="date" id="item-date-start-input" value="${dateStartDefault}">`}
       </div>
       <div class="field">
         <label class="field-label">End Date <span style="font-weight:400;">(optional, for multi-day)</span></label>
