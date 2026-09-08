@@ -465,6 +465,15 @@ function iconOptionsHtml(selected){
   return ICON_GROUPS.map(g=>`<optgroup label="${g.group}">${g.icons.map(([emoji,label])=>
     `<option value="${emoji}" ${selected===emoji?'selected':''}>${emoji} ${label}</option>`).join('')}</optgroup>`).join('');
 }
+// A custom-uploaded icon image (set via the Icon field's upload option) always takes
+// precedence over the emoji picker and the type default, wherever an icon is shown.
+function iconGlyphHtml(item, size){
+  size = size || 20;
+  if(item && item.iconImagePath){
+    return `<img src="${coverPublicUrl(item.iconImagePath)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;display:inline-block;vertical-align:middle;">`;
+  }
+  return escapeHtml((item && item.icon) || (item && TYPE_ICONS[item.type]) || '📌');
+}
 // Muted palette used when a card/pin has no custom color set — the map cycles through
 // these automatically so consecutive days stay visually distinct without any input.
 const COLOR_PALETTE = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c','#c9a227','#5c6bc0','#8d6e63'];
@@ -737,6 +746,7 @@ function dbActivityToItem(a, fileRows){
     id: a.id,
     type: a.type,
     icon: a.icon || '',
+    iconImagePath: a.icon_image_path || null,
     status: a.status,
     bookedBy: a.booked_by || '',
     name: a.name,
@@ -959,13 +969,13 @@ async function initTripMap(trip, dayItems, poiItems){
     let icon, extra;
     if(isStar){
       icon = makeStarPinIcon();
-      extra = item.type ? `<br>${item.icon || TYPE_ICONS[item.type] || ''} ${escapeHtml(item.type)}` : '';
+      extra = item.type ? `<br>${iconGlyphHtml(item, 14)} ${escapeHtml(item.type)}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
       // A pin uses the same icon and color already set on the activity's card
       // (customizable there) — only falls back to an automatic color if none was chosen.
       const color = item.cardColor || MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
-      const glyph = item.icon || TYPE_ICONS[item.type] || '📌';
+      const glyph = iconGlyphHtml(item, 16);
       icon = makeDayPinIcon(glyph, color);
       extra = dayNum? '<br>Day '+dayNum : '';
     }
@@ -1690,7 +1700,7 @@ function renderItemCard(item, trip){
   return `
     <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}" onclick="openItemDetailModal('${trip.id}','${item.id}')">
       <span class="drag-handle" title="Drag to reorder">⠿</span>
-      <div class="item-type-badge" style="${badgeStyle}">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
+      <div class="item-type-badge" style="${badgeStyle}">${iconGlyphHtml(item, 22)}</div>
       <div class="item-main">
         <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class=\"dup-badge\">Continued</span>':''}</div>
         <div class="item-meta">
@@ -1819,6 +1829,7 @@ async function deleteItem(tripId, itemId){
     if(!it) return [];
     const paths = (it.files||[]).map(f=>f.storagePath);
     if(it.imagePaths && it.imagePaths.length) paths.push(...it.imagePaths);
+    if(it.iconImagePath) paths.push(it.iconImagePath);
     return paths;
   });
   // Explicitly remove continuation duplicates too (belt-and-braces alongside the DB's own cascade).
@@ -1837,7 +1848,7 @@ async function duplicateItem(tripId, itemId){
   if(!item) return;
   const newOrder = trip.items.reduce((m,i)=>Math.max(m,i.order||0),-1)+1;
   const payload = {
-    trip_id: tripId, type: item.type, icon: item.icon || null, status: item.status,
+    trip_id: tripId, type: item.type, icon: item.icon || null, icon_image_path: item.iconImagePath || null, status: item.status,
     booked_by: item.bookedBy || null, name: item.name,
     cost_total: item.costTotal || 0, cost_per_pax: item.costPerPax || 0,
     date_start: item.dateStart || null, date_end: item.dateEnd || null,
@@ -1877,7 +1888,7 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
   for(const d of desiredDates){
     if(stillExistingDates.includes(d)) continue;
     const { data: row, error } = await sb.from('activities').insert({
-      trip_id: tripId, type: basePayload.type, icon: basePayload.icon, status: basePayload.status,
+      trip_id: tripId, type: basePayload.type, icon: basePayload.icon, icon_image_path: basePayload.icon_image_path || null, status: basePayload.status,
       booked_by: basePayload.booked_by, name: basePayload.name,
       cost_total: basePayload.cost_total, cost_per_pax: basePayload.cost_per_pax,
       date_start: d, date_end: d, time_start: null, time_end: null,
@@ -1923,7 +1934,7 @@ async function moveItemToDate(tripId, itemId){
   item.dateStart = newStart;
   item.dateEnd = newEnd;
   await reconcileDuplicates(tripId, itemId, {
-    type: item.type, icon: item.icon||null, status: item.status, booked_by: item.bookedBy||null,
+    type: item.type, icon: item.icon||null, icon_image_path: item.iconImagePath||null, status: item.status, booked_by: item.bookedBy||null,
     name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
     date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
     card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
@@ -1941,6 +1952,8 @@ let currentDraftId = null;      // storage folder for this session's uploads
 let currentEditingItemId = null; // set once the parent activity row exists in the DB
 let tempCoverPaths = [];
 let originalCoverPaths = [];
+let tempIconImagePath = null;
+let originalIconImagePath = null;
 function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
@@ -1950,6 +1963,8 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   tempFiles = item ? (item.files||[]).map(f=>({ ...f, pending:false })) : [];
   tempCoverPaths = item && item.imagePaths ? [...item.imagePaths] : [];
   originalCoverPaths = [...tempCoverPaths];
+  tempIconImagePath = item && item.iconImagePath ? item.iconImagePath : null;
+  originalIconImagePath = tempIconImagePath;
   modalPreventOutsideClose = true;
   const isPoiChecked = item ? !!item.isPoi : !!forcedIsPoi;
   const html = `
@@ -1975,10 +1990,11 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     </div>
     <div class="field">
       <label class="field-label">Icon</label>
-      <select id="item-icon-input">
+      <select id="item-icon-input" ${tempIconImagePath?'disabled':''}>
         <option value="">Auto (based on type)</option>
         ${iconOptionsHtml(item&&item.icon?item.icon:'')}
       </select>
+      <div id="icon-upload-row">${renderIconUploadHtml()}</div>
     </div>
     <div class="field">
       <label class="field-label">Card Color</label>
@@ -2108,6 +2124,42 @@ function removeCoverImage(idx){
   tempCoverPaths.splice(idx, 1);
   renderCoverPreview();
 }
+/* ---- Custom uploaded icon (replaces the emoji picker for this activity when set) ---- */
+function renderIconUploadHtml(){
+  if(tempIconImagePath){
+    return `
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px;">
+        <img src="${coverPublicUrl(tempIconImagePath)}" alt="" style="width:40px;height:40px;object-fit:contain;background:var(--bg-soft);border-radius:8px;border:1px solid var(--border);">
+        <span class="muted-note" style="flex:1;">Using this custom icon instead of the list above.</span>
+        <button type="button" class="btn btn-sm" onclick="removeCustomIcon()">Remove</button>
+      </div>`;
+  }
+  return `
+    <div style="margin-top:8px;">
+      <input type="file" accept="image/png" id="item-icon-upload-input" onchange="handleIconUpload(event)">
+      <span class="muted-note" style="display:block;margin-top:4px;">Or upload your own icon — a PNG with a transparent background works best.</span>
+    </div>`;
+}
+async function handleIconUpload(e){
+  const file = e.target.files[0];
+  e.target.value = '';
+  if(!file) return;
+  const path = `shared/${currentDraftId}/icon_${Date.now()}_${sanitizeFileName(file.name)}`;
+  const { error } = await sb.storage.from('attachments').upload(path, file);
+  if(error){ alert('Icon upload failed: '+error.message); return; }
+  tempIconImagePath = path;
+  refreshIconField();
+}
+function removeCustomIcon(){
+  tempIconImagePath = null;
+  refreshIconField();
+}
+function refreshIconField(){
+  const select = document.getElementById('item-icon-input');
+  if(select) select.disabled = !!tempIconImagePath;
+  const row = document.getElementById('icon-upload-row');
+  if(row) row.innerHTML = renderIconUploadHtml();
+}
 async function handleFileSelect(e){
   const files = Array.from(e.target.files);
   e.target.value = '';
@@ -2199,6 +2251,7 @@ async function saveItem(tripId, itemId){
     maps_link: document.getElementById('item-maps-input').value.trim() || null,
     card_color: colorEnabled ? document.getElementById('item-color-input').value : null,
     image_paths: tempCoverPaths,
+    icon_image_path: tempIconImagePath,
     notes: document.getElementById('item-notes-input').innerHTML,
     is_poi: document.getElementById('item-poi-input').checked,
   };
@@ -2211,6 +2264,11 @@ async function saveItem(tripId, itemId){
   // current one) need their storage objects cleaned up; newly-added ones are already
   // uploaded and just need linking, which the image_paths column update below handles.
   const removedCoverPaths = originalCoverPaths.filter(p=>!tempCoverPaths.includes(p));
+  // Note: unlike gallery images, a custom icon's storage path can be shared by multi-day
+  // continuation duplicates (copied at creation time, not a live reference), so an old icon
+  // is deliberately NOT deleted from storage here when replaced/removed — doing so could
+  // break a sibling duplicate that still points at the same file. It's only cleaned up when
+  // the whole activity (and all its duplicates) is deleted, in deleteItem.
 
   let savedId = itemId;
   let savedOrder;
@@ -2239,6 +2297,7 @@ async function saveItem(tripId, itemId){
     timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
     link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
     imagePaths: payload.image_paths || [],
+    iconImagePath: payload.icon_image_path || null,
     lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
     lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
     isDuplicate: existingItem ? existingItem.isDuplicate : false,
@@ -2370,7 +2429,7 @@ function renderTodayCard(item){
   const past = !ongoing && item.timeStart && item.timeStart < nowTime();
   return `
     <div class="card today-card" style="${past?'opacity:.55;':''}" onclick="openTripDetail('${item.tripId}')">
-      <div class="item-type-badge">${item.icon || TYPE_ICONS[item.type] || '📌'}</div>
+      <div class="item-type-badge">${iconGlyphHtml(item, 22)}</div>
       ${ongoing? '<div class="today-time" style="font-size:13px;color:var(--text-muted);">In progress</div>' :
         item.timeStart? `<div class="today-time">${itemTimeLabel(item)}</div>` : '<div class="today-time" style="font-size:13px;color:var(--text-muted);">All day</div>'}
       <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
@@ -2498,7 +2557,7 @@ function openItemDetailModal(tripId, itemId){
     ${detailGalleryImages.length ? `<div id="detail-gallery">${renderDetailGalleryHtml()}</div>` : ''}
     <div class="detail-meta-row">
       <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
-      <span class="detail-type-pill">${item.icon || TYPE_ICONS[item.type] || '📌'} ${item.type}${item.isPoi?' · Place of Interest':''}</span>
+      <span class="detail-type-pill">${iconGlyphHtml(item, 16)} ${item.type}${item.isPoi?' · Place of Interest':''}</span>
       ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
       ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
       ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
