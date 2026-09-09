@@ -85,6 +85,17 @@
   nav.tabs button.active{background:linear-gradient(150deg,var(--primary),var(--primary-dark));color:#fff;box-shadow:0 4px 10px rgba(15,82,87,0.3);}
   nav.tabs button:not(.active):hover{color:var(--text);background:var(--bg-soft);}
 
+  /* Always-visible "what's next" banner, part of the sticky header so it's on screen
+     from any page without needing to open anything. */
+  .countdown-strip{
+    max-width:1000px;margin:0 auto;padding:0 20px 12px;
+    display:flex;align-items:center;gap:8px;cursor:pointer;
+    font-size:12.5px;font-weight:600;color:var(--primary-dark);
+  }
+  .countdown-strip:hover .countdown-strip-text{text-decoration:underline;}
+  .countdown-strip-icon{font-size:14px;line-height:1;display:inline-flex;}
+  .countdown-strip-when{font-weight:700;color:var(--primary);}
+
   h1,h2,h3{margin:0;letter-spacing:-0.01em;}
   .page-title{font-family:var(--font-serif);font-size:27px;font-weight:600;margin:30px 0 18px;letter-spacing:-0.01em;}
   .section-title{font-size:13px;font-weight:700;margin:0 0 14px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;}
@@ -434,6 +445,7 @@
       <button data-view="today">Today</button>
     </nav>
   </div>
+  <div id="countdown-strip" class="countdown-strip hidden"></div>
 </header>
 
 <div id="app"><div class="loading-note">Loading your trips…</div></div>
@@ -452,6 +464,11 @@ const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟�
 const TYPES = ['Flight','Transport','Food','Activity','Stays','Shopping','Misc'];
 const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Shopping:'#c9577a',Misc:'#948d7c'};
 const STATUSES = ['Booked','To Book','Nil'];
+// Ad-hoc daily spending (Trip Expenses page) is a separate concept from booked activity
+// costs — its own small category set, kept distinct from TYPES so "Activities" here can't
+// be confused with the itinerary's "Activity" item type.
+const EXPENSE_CATEGORIES = ['Food','Shopping','Transport','Activities','Other'];
+const EXPENSE_CATEGORY_ICONS = {Food:'🍜',Shopping:'🛍️',Transport:'🚗',Activities:'🎟️',Other:'💸'};
 const BOOKED_BY = ['Victoria','Weng Seng'];
 const ICON_GROUPS = [
   { group:'Transport', icons:[['🚗','Car'],['🚆','Train'],['🚌','Bus'],['⛴️','Ferry'],['🚕','Taxi'],['🚲','Bike'],['🛵','Scooter'],['🚶','Walk'],['🚠','Cable Car']] },
@@ -571,6 +588,13 @@ function todayStr(){
 function nowTime(){
   const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
+// Defaults the Trip Expenses "Day" field to today if today falls inside the trip, otherwise
+// the trip's start date — so logging a coffee mid-trip doesn't need any date fiddling.
+function todayWithinTrip(trip){
+  const t = todayStr();
+  if(trip.startDate && trip.endDate && t>=trip.startDate && t<=trip.endDate) return t;
+  return trip.startDate || '';
+}
 function parseDate(s){ if(!s) return null; const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
 function daysBetween(a,b){ return Math.round((parseDate(b)-parseDate(a))/86400000); }
 function fmtDateShort(s){
@@ -688,6 +712,7 @@ let ui = {
   homeExpensesFilter: 'all',
   expensesModalType: 'all',
   expensesModalBookedBy: 'all',
+  expenseCategoryFilter: 'all',
 };
 // Remembers which page (and which trip/day/filters) was open so a refresh lands back
 // where you were instead of resetting to Home.
@@ -722,16 +747,19 @@ async function loadAllData(){
   if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
 
   const tripIds = tripRows.map(t=>t.id);
-  let activityRows = [], taskRows = [], fileRows = [];
+  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [];
   if(tripIds.length){
-    const [actRes, taskRes] = await Promise.all([
+    const [actRes, taskRes, expRes] = await Promise.all([
       sb.from('activities').select('*').in('trip_id', tripIds).order('sort_order', { ascending: true }),
       sb.from('tasks').select('*').in('trip_id', tripIds).order('created_at', { ascending: true }),
+      sb.from('expenses').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
     ]);
     if(actRes.error) alert('Could not load activities: '+actRes.error.message);
     if(taskRes.error) alert('Could not load tasks: '+taskRes.error.message);
+    if(expRes.error) alert('Could not load expenses: '+expRes.error.message);
     activityRows = actRes.data || [];
     taskRows = taskRes.data || [];
+    expenseRows = expRes.data || [];
     const activityIds = activityRows.map(a=>a.id);
     if(activityIds.length){
       const filesRes = await sb.from('activity_files').select('*').in('activity_id', activityIds);
@@ -750,7 +778,15 @@ async function loadAllData(){
     dayTitles: t.day_titles || {},
     items: activityRows.filter(a=>a.trip_id===t.id).map(a=>dbActivityToItem(a, fileRows)),
     tasks: taskRows.filter(tk=>tk.trip_id===t.id).map(tk=>({ id: tk.id, text: tk.text, done: tk.done })),
+    expenses: expenseRows.filter(e=>e.trip_id===t.id).map(dbExpenseToItem),
   }));
+}
+function dbExpenseToItem(e){
+  return {
+    id: e.id, tripId: e.trip_id, date: e.date || '', category: e.category,
+    amount: Number(e.amount) || 0, note: e.note || '', paidBy: e.paid_by || '',
+    createdAt: e.created_at || '',
+  };
 }
 function dbActivityToItem(a, fileRows){
   return {
@@ -836,6 +872,39 @@ async function resolveMapsShortLink(url){
     return data.finalUrl;
   }catch(e){ return null; }
 }
+// Convenience for the Add/Edit Activity form: pasting a Maps link fills in the Name (and a
+// best-guess Type) so a place doesn't need to be typed out by hand while standing in front
+// of it. Only ever fills fields the user hasn't already touched — never overwrites.
+async function autofillFromMapsLink(url){
+  url = (url||'').trim();
+  if(!url) return;
+  const nameInput = document.getElementById('item-name-input');
+  if(!nameInput || nameInput.value.trim()) return;
+  let placeName = extractPlaceNameFromMapsLink(url);
+  if(!placeName && isShortMapsLink(url)){
+    const resolved = await resolveMapsShortLink(url);
+    if(resolved) placeName = extractPlaceNameFromMapsLink(resolved);
+  }
+  if(!placeName) return;
+  // The maps link field may have changed (or the modal closed) while the short-link
+  // resolve above was in flight — re-check right before writing.
+  const nameInputNow = document.getElementById('item-name-input');
+  if(!nameInputNow || nameInputNow.value.trim()) return;
+  nameInputNow.value = placeName;
+  const typeInput = document.getElementById('item-type-input');
+  if(typeInput && !typeInput.dataset.userChanged){
+    const guessed = guessTypeFromPlaceName(placeName);
+    if(guessed) typeInput.value = guessed;
+  }
+}
+function guessTypeFromPlaceName(name){
+  const s = name.toLowerCase();
+  if(/hotel|hostel|airbnb|\binn\b|resort|apartment|guesthouse|stay/.test(s)) return 'Stays';
+  if(/restaurant|caf[eé]|bistro|\bbar\b|noodle|kitchen|eatery|diner/.test(s)) return 'Food';
+  if(/airport|station|railway|\btrain\b/.test(s)) return 'Transport';
+  if(/mall|market|shop|store|boutique/.test(s)) return 'Shopping';
+  return null;
+}
 async function geocodePlace(query){
   try{
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
@@ -884,6 +953,7 @@ function render(){
   else if(ui.view==='tripDetail') app.innerHTML = renderTripDetail();
   else if(ui.view==='poi') app.innerHTML = renderPlacesOfInterest();
   else if(ui.view==='today') app.innerHTML = renderToday();
+  else if(ui.view==='tripExpenses') app.innerHTML = renderTripExpenses();
   afterRender();
 }
 
@@ -895,7 +965,64 @@ function afterRender(){
   if(ui.view==='poi' && lastTripDetailTrip && document.getElementById('trip-map')){
     initTripMap(lastTripDetailTrip, [], (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
+  renderCountdownStrip();
 }
+
+/* ---- "What's next" countdown strip (lives in the header, outside #app, so it's visible
+   on every page without needing to open anything) ---- */
+function computeCountdownInfo(){
+  const now = new Date();
+  const t = todayStr();
+  const n = nowTime();
+  let candidates = [];
+  data.trips.forEach(trip=>{
+    (trip.items||[]).forEach(item=>{
+      if(item.isPoi || !item.dateStart) return;
+      candidates.push({ item, trip });
+    });
+  });
+  // Prefer the soonest thing that hasn't started yet, within the next 3 days — far-future
+  // items would just be noise in an "at a glance" strip.
+  let upcoming = null;
+  candidates.forEach(c=>{
+    const dt = new Date(c.item.dateStart+'T'+(c.item.timeStart||'00:00')+':00');
+    if(isNaN(dt.getTime())) return;
+    const diffMs = dt.getTime() - now.getTime();
+    if(diffMs > 0 && diffMs <= 1000*60*60*72 && (!upcoming || diffMs < upcoming.diffMs)){
+      upcoming = { ...c, diffMs, mode:'upcoming' };
+    }
+  });
+  if(upcoming) return upcoming;
+  // Otherwise, surface whatever's currently in progress (e.g. a multi-night hotel stay) so
+  // there's still a useful "where am I supposed to be" answer even with nothing imminent.
+  let ongoing = null;
+  candidates.forEach(c=>{
+    const { item } = c;
+    const end = item.dateEnd || item.dateStart;
+    if(item.dateStart<=t && t<=end && !ongoing) ongoing = { ...c, mode:'ongoing' };
+  });
+  return ongoing;
+}
+function countdownWhenLabel(diffMs){
+  const mins = Math.max(1, Math.round(diffMs/60000));
+  if(mins < 60) return `in ${mins}m`;
+  if(mins < 60*24) return `in ${Math.floor(mins/60)}h ${mins%60}m`;
+  return `in ${Math.floor(mins/(60*24))}d`;
+}
+function renderCountdownStrip(){
+  const el = document.getElementById('countdown-strip');
+  if(!el) return;
+  const info = computeCountdownInfo();
+  if(!info){ el.classList.add('hidden'); el.innerHTML=''; el.onclick=null; return; }
+  const { item, trip, mode, diffMs } = info;
+  const whenHtml = mode==='ongoing'
+    ? `<span class="countdown-strip-when">Now</span>`
+    : `<span class="countdown-strip-when">${countdownWhenLabel(diffMs)}</span>`;
+  el.classList.remove('hidden');
+  el.innerHTML = `<span class="countdown-strip-icon">${iconGlyphHtml(item,14)}</span><span class="countdown-strip-text">${escapeHtml(item.name||'Untitled')}</span> ${whenHtml}`;
+  el.onclick = ()=> openItemDetailModal(trip.id, item.id);
+}
+let countdownStripTimer = setInterval(renderCountdownStrip, 60000);
 
 /* ---- Trip map (Leaflet + OpenStreetMap — free, no API key needed) ---- */
 // Falls back to cycling through the same preset palette used for card colors, so a
@@ -1562,6 +1689,7 @@ function renderTripDetail(){
         <div class="countdown-sub">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate)+' · '+numDays+' day'+(numDays===1?'':'s') : 'No dates set'} · ${trip.pax||1} pax</div>
       </div>
       <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" onclick="ui.view='tripExpenses';render();">💰 Trip Expenses</button>
         <button class="btn btn-sm" onclick="openExpensesModal('${trip.id}')">Expenses</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
@@ -1597,6 +1725,7 @@ function renderTripDetail(){
       </select>` : ''}
       <button class="btn btn-sm" onclick="ui.view='poi';render();">★ Places of Interest</button>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+ Add Activity</button>
+      <button class="btn btn-sm" onclick="ui.view='tripExpenses';render();">💰 Trip Expenses</button>
     </div>
 
     <div class="search-bar">
@@ -1992,7 +2121,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     <div class="field-row">
       <div class="field">
         <label class="field-label">Type</label>
-        <select id="item-type-input">${TYPES.map(t=>`<option value="${t}" ${item&&item.type===t?'selected':''}>${t}</option>`).join('')}</select>
+        <select id="item-type-input" onchange="this.dataset.userChanged='1';">${TYPES.map(t=>`<option value="${t}" ${item&&item.type===t?'selected':''}>${t}</option>`).join('')}</select>
       </div>
       <div class="field">
         <label class="field-label">Status</label>
@@ -2065,7 +2194,8 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     </div>
     <div class="field">
       <label class="field-label">Google Maps Link</label>
-      <input type="url" id="item-maps-input" value="${item&&item.mapsLink?escapeHtml(item.mapsLink):''}" placeholder="https://maps.google.com/…">
+      <input type="url" id="item-maps-input" value="${item&&item.mapsLink?escapeHtml(item.mapsLink):''}" placeholder="https://maps.google.com/…" onchange="autofillFromMapsLink(this.value)">
+      <span class="muted-note">Pasting a link fills in the Name (and a best-guess Type) below if they're still blank.</span>
     </div>
     <div class="field">
       <label class="field-label">Images</label>
@@ -2333,6 +2463,118 @@ async function saveItem(tripId, itemId){
   closeModal(); render();
 }
 
+/* ============ TRIP EXPENSES (quick daily spending log) ============
+   Separate from the booked-activity cost breakdown below (Expenses modal) — this is for
+   ad-hoc cash spending as you go (food, shopping, etc.), logged in a few taps and not
+   folded into the itinerary's own cost totals. */
+function renderTripExpenses(){
+  const trip = getTrip(ui.detailTripId);
+  if(!trip){ ui.view='trips'; return renderTrips(); }
+  const filterCat = ui.expenseCategoryFilter || 'all';
+  const all = (trip.expenses||[]).slice().sort((a,b)=>
+    (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+  const filtered = filterCat==='all' ? all : all.filter(e=>e.category===filterCat);
+  const total = filtered.reduce((s,e)=>s+Number(e.amount||0),0);
+  const byCategory = {};
+  filtered.forEach(e=>{ byCategory[e.category] = (byCategory[e.category]||0) + Number(e.amount||0); });
+
+  return `
+    <button class="back-link" style="margin-top:24px;" onclick="ui.view='tripDetail';render();">&larr; Back to ${escapeHtml(trip.name)}</button>
+    <div class="trip-detail-header">
+      <div>
+        <h1 class="page-title" style="margin:0 0 4px;">Trip Expenses</h1>
+        <div class="countdown-sub">${escapeHtml(trip.name)} · quick log for daily spending</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Log an Expense</div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Amount</label>
+          <input type="number" min="0" step="0.01" id="expense-amount-input" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label class="field-label">Category</label>
+          <select id="expense-category-input">${EXPENSE_CATEGORIES.map(c=>`<option value="${c}">${EXPENSE_CATEGORY_ICONS[c]||''} ${c}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Day <span style="font-weight:400;">(optional)</span></label>
+          ${trip.startDate
+            ? `<select id="expense-date-input">${dayOptionsHtml(trip, todayWithinTrip(trip), true)}</select>`
+            : `<input type="date" id="expense-date-input" value="${todayStr()}">`}
+        </div>
+        <div class="field">
+          <label class="field-label">Paid by <span style="font-weight:400;">(optional)</span></label>
+          <select id="expense-paidby-input">
+            <option value="">—</option>
+            ${BOOKED_BY.map(b=>`<option value="${b}">${b}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Note <span style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="expense-note-input" placeholder="e.g. Lunch at the night market">
+      </div>
+      <button class="btn btn-primary" onclick="addExpense('${trip.id}')">+ Log Expense</button>
+    </div>
+
+    <div class="filter-bar">
+      <select class="filter-select" onchange="ui.expenseCategoryFilter=this.value;render();">
+        <option value="all" ${filterCat==='all'?'selected':''}>All Categories</option>
+        ${EXPENSE_CATEGORIES.map(c=>`<option value="${c}" ${filterCat===c?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Total</div>
+      <div class="expenses-total">${fmtCost(total)}</div>
+      ${Object.keys(byCategory).length? `<div class="countdown-sub" style="margin-top:6px;">${Object.keys(byCategory).map(c=>`${EXPENSE_CATEGORY_ICONS[c]||''} ${c}: ${fmtCost(byCategory[c])}`).join(' · ')}</div>` : ''}
+    </div>
+
+    <div id="expense-list">
+      ${filtered.length===0 ? '<div class="empty-state"><span class="emoji">💸</span><p>No expenses logged yet.</p></div>' : filtered.map(e=>renderExpenseRow(e)).join('')}
+    </div>
+  `;
+}
+function renderExpenseRow(e){
+  return `<div class="card" style="margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+    <div style="font-size:20px;">${EXPENSE_CATEGORY_ICONS[e.category]||'💸'}</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;">${fmtCost(e.amount)} <span style="font-weight:400;color:var(--text-muted);">· ${escapeHtml(e.category)}</span></div>
+      <div class="countdown-sub">${e.date?fmtDateShort(e.date):''}${e.paidBy?' · '+escapeHtml(e.paidBy):''}${e.note?' · '+escapeHtml(e.note):''}</div>
+    </div>
+    <button class="btn btn-sm" onclick="deleteExpense('${e.tripId}','${e.id}')" title="Delete">✕</button>
+  </div>`;
+}
+async function addExpense(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const amountInput = document.getElementById('expense-amount-input');
+  const amount = Number(amountInput.value);
+  if(!amount || amount<=0){ alert('Enter an amount greater than 0.'); return; }
+  const category = document.getElementById('expense-category-input').value;
+  const dateInput = document.getElementById('expense-date-input');
+  const date = (dateInput && dateInput.value) ? dateInput.value : (todayWithinTrip(trip) || null);
+  const paidBy = document.getElementById('expense-paidby-input').value || null;
+  const note = document.getElementById('expense-note-input').value.trim() || null;
+  const payload = { trip_id: tripId, amount, category, date, paid_by: paidBy, note };
+  const { data: row, error } = await sb.from('expenses').insert(payload).select().single();
+  if(error){ alert('Could not log expense: '+error.message); return; }
+  trip.expenses = trip.expenses || [];
+  trip.expenses.push(dbExpenseToItem(row));
+  render();
+}
+async function deleteExpense(tripId, expenseId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  try{ await sb.from('expenses').delete().eq('id', expenseId); }catch(e){}
+  trip.expenses = (trip.expenses||[]).filter(e=>e.id!==expenseId);
+  render();
+}
+
 /* ---- Trip Expenses Modal ---- */
 let tripExpensesChart = null;
 function openExpensesModal(tripId){
@@ -2549,6 +2791,27 @@ function galleryNav(delta){
   renderGallery();
 }
 
+// One-tap way to hand a location to a taxi driver or send it to a travel companion —
+// uses the native share sheet on mobile (where it's most useful), falling back to a
+// clipboard copy (with a plain "copy the link" nudge if even that fails, e.g. no
+// clipboard permission).
+async function shareLocation(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  if(!item || !item.mapsLink) return;
+  const title = item.name || 'Location';
+  if(navigator.share){
+    try{ await navigator.share({ title, text: title, url: item.mapsLink }); return; }
+    catch(e){ if(e && e.name==='AbortError') return; /* user cancelled the share sheet */ }
+  }
+  try{
+    await navigator.clipboard.writeText(`${title}\n${item.mapsLink}`);
+    alert('Location copied — paste it into Maps, a message, or share with your companion.');
+  }catch(e){
+    alert('Could not copy automatically — long-press the Navigation link above to copy it.');
+  }
+}
+
 /* ---- Activity detail popup: tapping a card (or its map pin) opens everything about
    it in one place — images, meta, notes, and attachments — instead of only the edit form. */
 let detailGalleryImages = [];
@@ -2578,6 +2841,7 @@ function openItemDetailModal(tripId, itemId){
     ${(item.link||item.mapsLink)? `<div class="detail-links-row">
       ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 Link</a>`:''}
       ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener">🧭 Navigation</a>`:''}
+      ${item.mapsLink? `<button type="button" class="nav-btn" onclick="shareLocation('${trip.id}','${item.id}')">📤 Share Location</button>`:''}
     </div>` : ''}
     ${item.notes? `<div class="detail-notes">${linkedNotes}</div>` : ''}
     ${(item.files&&item.files.length)? `<div class="detail-files">
