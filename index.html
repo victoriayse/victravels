@@ -474,6 +474,17 @@ function iconGlyphHtml(item, size){
   }
   return escapeHtml((item && item.icon) || (item && TYPE_ICONS[item.type]) || '📌');
 }
+// Like iconGlyphHtml, but returns null instead of falling back to the type default —
+// used for the Places of Interest map pin, which should keep its plain gold star unless
+// the user has actually chosen an icon (explicit emoji or uploaded image) for that place.
+function explicitIconGlyphHtml(item, size){
+  size = size || 20;
+  if(item && item.iconImagePath){
+    return `<img src="${coverPublicUrl(item.iconImagePath)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;display:inline-block;vertical-align:middle;">`;
+  }
+  if(item && item.icon) return escapeHtml(item.icon);
+  return null;
+}
 // Muted palette used when a card/pin has no custom color set — the map cycles through
 // these automatically so consecutive days stay visually distinct without any input.
 const COLOR_PALETTE = ['#0f5257','#b8874a','#7a5195','#2f6690','#3d8361','#b3454a','#948d7c','#c9a227','#5c6bc0','#8d6e63'];
@@ -901,10 +912,10 @@ function makeDayPinIcon(glyph, color){
     iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
   });
 }
-function makeStarPinIcon(){
+function makeStarPinIcon(glyph){
   return L.divIcon({
     className: '',
-    html: `<div class="map-star">★</div>`,
+    html: `<div class="map-star">${glyph||'★'}</div>`,
     iconSize: [24,24], iconAnchor: [12,12], popupAnchor: [0,-12],
   });
 }
@@ -968,7 +979,7 @@ async function initTripMap(trip, dayItems, poiItems){
     if(item.lat==null || item.lng==null) return;
     let icon, extra;
     if(isStar){
-      icon = makeStarPinIcon();
+      icon = makeStarPinIcon(explicitIconGlyphHtml(item, 14));
       extra = item.type ? `<br>${iconGlyphHtml(item, 14)} ${escapeHtml(item.type)}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
@@ -1995,6 +2006,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
         ${iconOptionsHtml(item&&item.icon?item.icon:'')}
       </select>
       <div id="icon-upload-row">${renderIconUploadHtml()}</div>
+      <span class="muted-note">Also shown on the card and its map pin — including the star pin for a Place of Interest.</span>
     </div>
     <div class="field">
       <label class="field-label">Card Color</label>
