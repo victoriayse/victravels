@@ -86,15 +86,23 @@
   nav.tabs button:not(.active):hover{color:var(--text);background:var(--bg-soft);}
 
   /* Always-visible "what's next" banner, part of the sticky header so it's on screen
-     from any page without needing to open anything. */
+     from any page without needing to open anything. A bright, high-contrast pill on
+     purpose — this is meant to catch your eye at a glance, not blend into the header. */
   .countdown-strip{
     max-width:1000px;margin:0 auto;padding:0 20px 12px;
-    display:flex;align-items:center;gap:8px;cursor:pointer;
-    font-size:12.5px;font-weight:600;color:var(--primary-dark);
+    display:flex;cursor:pointer;
   }
-  .countdown-strip:hover .countdown-strip-text{text-decoration:underline;}
+  .countdown-strip-pill{
+    display:inline-flex;align-items:center;gap:8px;
+    background:linear-gradient(120deg,#ff8a3d,#ff4d6d);
+    color:#fff;font-size:13px;font-weight:700;
+    padding:8px 16px;border-radius:999px;
+    box-shadow:0 4px 14px rgba(255,77,109,0.4);
+    transition:box-shadow .18s ease, transform .18s ease;
+  }
+  .countdown-strip:hover .countdown-strip-pill{box-shadow:0 6px 18px rgba(255,77,109,0.5);transform:translateY(-1px);}
   .countdown-strip-icon{font-size:14px;line-height:1;display:inline-flex;}
-  .countdown-strip-when{font-weight:700;color:var(--primary);}
+  .countdown-strip-when{font-weight:800;background:rgba(255,255,255,0.28);padding:2px 9px;border-radius:999px;}
 
   h1,h2,h3{margin:0;letter-spacing:-0.01em;}
   .page-title{font-family:var(--font-serif);font-size:27px;font-weight:600;margin:30px 0 18px;letter-spacing:-0.01em;}
@@ -1022,7 +1030,7 @@ function renderCountdownStrip(){
     ? `<span class="countdown-strip-when">Now</span>`
     : `<span class="countdown-strip-when">${countdownWhenLabel(diffMs)}</span>`;
   el.classList.remove('hidden');
-  el.innerHTML = `<span class="countdown-strip-icon">${iconGlyphHtml(item,14)}</span><span class="countdown-strip-text">${escapeHtml(item.name||'Untitled')}</span> ${whenHtml}`;
+  el.innerHTML = `<span class="countdown-strip-pill"><span class="countdown-strip-icon">${iconGlyphHtml(item,14)}</span><span class="countdown-strip-text">${escapeHtml(item.name||'Untitled')}</span> ${whenHtml}</span>`;
   el.onclick = ()=> openItemDetailModal(trip.id, item.id);
 }
 let countdownStripTimer = setInterval(renderCountdownStrip, 60000);
