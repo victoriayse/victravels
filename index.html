@@ -183,6 +183,8 @@
   .flight-name{font-weight:600;font-size:13.5px;}
   .flight-meta{font-size:12px;color:var(--text-muted);margin-top:1px;}
   .expenses-total{font-family:var(--font-serif);font-size:28px;font-weight:600;margin-top:8px;}
+  .expense-day-header{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin:0 2px 8px;}
+  .expense-row:hover{box-shadow:var(--shadow-hover);}
   .task-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
   .task-row:last-of-type{border-bottom:none;}
   .task-row input[type=checkbox]{width:17px;height:17px;accent-color:var(--primary);cursor:pointer;}
@@ -713,6 +715,7 @@ let ui = {
   expensesModalType: 'all',
   expensesModalBookedBy: 'all',
   expenseCategoryFilter: 'all',
+  expenseDayFilter: 'all',
 };
 // Remembers which page (and which trip/day/filters) was open so a refresh lands back
 // where you were instead of resetting to Home.
@@ -785,7 +788,7 @@ function dbExpenseToItem(e){
   return {
     id: e.id, tripId: e.trip_id, date: e.date || '', category: e.category,
     amount: Number(e.amount) || 0, note: e.note || '', paidBy: e.paid_by || '',
-    createdAt: e.created_at || '',
+    receiptPath: e.receipt_path || null, createdAt: e.created_at || '',
   };
 }
 function dbActivityToItem(a, fileRows){
@@ -1689,7 +1692,7 @@ function renderTripDetail(){
         <div class="countdown-sub">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate)+' · '+numDays+' day'+(numDays===1?'':'s') : 'No dates set'} · ${trip.pax||1} pax</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-sm" onclick="ui.view='tripExpenses';render();">💰 Trip Expenses</button>
+        <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">💰 Trip Expenses</button>
         <button class="btn btn-sm" onclick="openExpensesModal('${trip.id}')">Expenses</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
@@ -1725,7 +1728,7 @@ function renderTripDetail(){
       </select>` : ''}
       <button class="btn btn-sm" onclick="ui.view='poi';render();">★ Places of Interest</button>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+ Add Activity</button>
-      <button class="btn btn-sm" onclick="ui.view='tripExpenses';render();">💰 Trip Expenses</button>
+      <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">💰 Trip Expenses</button>
     </div>
 
     <div class="search-bar">
@@ -2125,7 +2128,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
       </div>
       <div class="field">
         <label class="field-label">Status</label>
-        <select id="item-status-input">${STATUSES.map(s=>`<option value="${s}" ${item&&item.status===s?'selected':''}>${s}</option>`).join('')}</select>
+        <select id="item-status-input">${STATUSES.map(s=>`<option value="${s}" ${(item?item.status===s:s==='Nil')?'selected':''}>${s}</option>`).join('')}</select>
       </div>
     </div>
     <div class="field">
@@ -2467,16 +2470,34 @@ async function saveItem(tripId, itemId){
    Separate from the booked-activity cost breakdown below (Expenses modal) — this is for
    ad-hoc cash spending as you go (food, shopping, etc.), logged in a few taps and not
    folded into the itinerary's own cost totals. */
+let editingExpenseId = null;
+let tempReceiptPath = null;
+// Entry point for both "💰 Trip Expenses" buttons — resets any in-progress edit so
+// re-opening the page never carries over stale form state from a previous visit.
+function openTripExpenses(tripId){
+  ui.detailTripId = tripId;
+  ui.view = 'tripExpenses';
+  editingExpenseId = null;
+  tempReceiptPath = null;
+  render();
+}
 function renderTripExpenses(){
   const trip = getTrip(ui.detailTripId);
   if(!trip){ ui.view='trips'; return renderTrips(); }
+  const numDays = tripDays(trip);
   const filterCat = ui.expenseCategoryFilter || 'all';
+  const filterDay = ui.expenseDayFilter || 'all';
   const all = (trip.expenses||[]).slice().sort((a,b)=>
     (b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
-  const filtered = filterCat==='all' ? all : all.filter(e=>e.category===filterCat);
+  const filtered = all
+    .filter(e=> filterCat==='all' || e.category===filterCat)
+    .filter(e=> filterDay==='all' || e.date===filterDay);
   const total = filtered.reduce((s,e)=>s+Number(e.amount||0),0);
   const byCategory = {};
   filtered.forEach(e=>{ byCategory[e.category] = (byCategory[e.category]||0) + Number(e.amount||0); });
+  const groups = groupExpensesByDate(filtered);
+
+  const editing = editingExpenseId ? (trip.expenses||[]).find(e=>e.id===editingExpenseId) : null;
 
   return `
     <button class="back-link" style="margin-top:24px;" onclick="ui.view='tripDetail';render();">&larr; Back to ${escapeHtml(trip.name)}</button>
@@ -2487,38 +2508,45 @@ function renderTripExpenses(){
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:22px;padding:18px;">
-      <div class="section-title">Log an Expense</div>
+    <div class="card" id="expense-form-card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">${editing? 'Edit Expense' : 'Log an Expense'}</div>
       <div class="field-row">
         <div class="field">
           <label class="field-label">Amount</label>
-          <input type="number" min="0" step="0.01" id="expense-amount-input" placeholder="0.00">
+          <input type="number" min="0" step="0.01" id="expense-amount-input" placeholder="0.00" value="${editing?editing.amount:''}">
         </div>
         <div class="field">
           <label class="field-label">Category</label>
-          <select id="expense-category-input">${EXPENSE_CATEGORIES.map(c=>`<option value="${c}">${EXPENSE_CATEGORY_ICONS[c]||''} ${c}</option>`).join('')}</select>
+          <select id="expense-category-input">${EXPENSE_CATEGORIES.map(c=>`<option value="${c}" ${editing&&editing.category===c?'selected':''}>${EXPENSE_CATEGORY_ICONS[c]||''} ${c}</option>`).join('')}</select>
         </div>
       </div>
       <div class="field-row">
         <div class="field">
           <label class="field-label">Day <span style="font-weight:400;">(optional)</span></label>
           ${trip.startDate
-            ? `<select id="expense-date-input">${dayOptionsHtml(trip, todayWithinTrip(trip), true)}</select>`
-            : `<input type="date" id="expense-date-input" value="${todayStr()}">`}
+            ? `<select id="expense-date-input">${dayOptionsHtml(trip, editing?editing.date:todayWithinTrip(trip), true)}</select>`
+            : `<input type="date" id="expense-date-input" value="${editing?editing.date:todayStr()}">`}
         </div>
         <div class="field">
           <label class="field-label">Paid by <span style="font-weight:400;">(optional)</span></label>
           <select id="expense-paidby-input">
-            <option value="">—</option>
-            ${BOOKED_BY.map(b=>`<option value="${b}">${b}</option>`).join('')}
+            <option value="" ${editing&&!editing.paidBy?'selected':''}>—</option>
+            ${BOOKED_BY.map(b=>`<option value="${b}" ${editing&&editing.paidBy===b?'selected':''}>${b}</option>`).join('')}
           </select>
         </div>
       </div>
       <div class="field">
         <label class="field-label">Note <span style="font-weight:400;">(optional)</span></label>
-        <input type="text" id="expense-note-input" placeholder="e.g. Lunch at the night market">
+        <input type="text" id="expense-note-input" placeholder="e.g. Lunch at the night market" value="${editing?escapeHtml(editing.note):''}">
       </div>
-      <button class="btn btn-primary" onclick="addExpense('${trip.id}')">+ Log Expense</button>
+      <div class="field">
+        <label class="field-label">Receipt <span style="font-weight:400;">(optional)</span></label>
+        <div id="expense-receipt-row">${renderExpenseReceiptUploadHtml()}</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveExpense('${trip.id}')">${editing? 'Save Changes' : '+ Log Expense'}</button>
+        ${editing? `<button class="btn" onclick="cancelEditExpense()">Cancel</button>` : ''}
+      </div>
     </div>
 
     <div class="filter-bar">
@@ -2526,52 +2554,141 @@ function renderTripExpenses(){
         <option value="all" ${filterCat==='all'?'selected':''}>All Categories</option>
         ${EXPENSE_CATEGORIES.map(c=>`<option value="${c}" ${filterCat===c?'selected':''}>${c}</option>`).join('')}
       </select>
+      ${trip.startDate? `<select class="filter-select" onchange="ui.expenseDayFilter=this.value;render();">
+        <option value="all" ${filterDay==='all'?'selected':''}>All Days</option>
+        ${Array.from({length:numDays}).map((_,i)=>{ const d=addDays(trip.startDate,i); return `<option value="${d}" ${filterDay===d?'selected':''}>Day ${i+1} · ${fmtDateShort(d)}</option>`; }).join('')}
+      </select>` : ''}
     </div>
 
     <div class="card" style="margin-bottom:22px;padding:18px;">
       <div class="section-title">Total</div>
       <div class="expenses-total">${fmtCost(total)}</div>
+      ${trip.pax>1 && total>0? `<div class="countdown-sub">≈ ${fmtCost(total/trip.pax)}/pax</div>`:''}
       ${Object.keys(byCategory).length? `<div class="countdown-sub" style="margin-top:6px;">${Object.keys(byCategory).map(c=>`${EXPENSE_CATEGORY_ICONS[c]||''} ${c}: ${fmtCost(byCategory[c])}`).join(' · ')}</div>` : ''}
     </div>
 
     <div id="expense-list">
-      ${filtered.length===0 ? '<div class="empty-state"><span class="emoji">💸</span><p>No expenses logged yet.</p></div>' : filtered.map(e=>renderExpenseRow(e)).join('')}
+      ${groups.length===0 ? '<div class="empty-state"><span class="emoji">💸</span><p>No expenses logged yet.</p></div>' : groups.map(g=>renderExpenseGroupHtml(g, trip)).join('')}
     </div>
   `;
 }
-function renderExpenseRow(e){
-  return `<div class="card" style="margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
-    <div style="font-size:20px;">${EXPENSE_CATEGORY_ICONS[e.category]||'💸'}</div>
+function groupExpensesByDate(list){
+  const byDate = {};
+  const order = [];
+  list.forEach(e=>{
+    const key = e.date || 'No date';
+    if(!byDate[key]){ byDate[key]=[]; order.push(key); }
+    byDate[key].push(e);
+  });
+  return order.map(key=>({ date:key, items:byDate[key], total: byDate[key].reduce((s,e)=>s+Number(e.amount||0),0) }));
+}
+function renderExpenseGroupHtml(group, trip){
+  const hasDate = group.date!=='No date';
+  const dayLabel = (hasDate && trip.startDate) ? `Day ${daysBetween(trip.startDate, group.date)+1} · ${fmtDateShort(group.date)}` : (hasDate ? fmtDateShort(group.date) : 'No date');
+  return `
+    <div style="margin-bottom:18px;">
+      <div class="expense-day-header">
+        <span>${dayLabel}</span>
+        <span>${fmtCost(group.total)}</span>
+      </div>
+      ${group.items.map(e=>renderExpenseRow(e, trip)).join('')}
+    </div>`;
+}
+// Each row doubles as an edit trigger (tap anywhere on it) — the receipt thumbnail and
+// delete button stop propagation so they act independently of that.
+function renderExpenseRow(e, trip){
+  const perPax = (trip && trip.pax>1 && Number(e.amount)>0) ? ` · ${fmtCost(Number(e.amount)/trip.pax)}/pax` : '';
+  const metaBits = [e.paidBy? escapeHtml(e.paidBy):'', e.note? escapeHtml(e.note):''].filter(Boolean).join(' · ');
+  return `<div class="card expense-row" style="margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="startEditExpense('${e.tripId}','${e.id}')">
+    ${e.receiptPath
+      ? `<a href="${coverPublicUrl(e.receiptPath)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><img src="${coverPublicUrl(e.receiptPath)}" alt="Receipt" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0;"></a>`
+      : `<div style="font-size:20px;flex-shrink:0;">${EXPENSE_CATEGORY_ICONS[e.category]||'💸'}</div>`}
     <div style="flex:1;min-width:0;">
-      <div style="font-weight:600;">${fmtCost(e.amount)} <span style="font-weight:400;color:var(--text-muted);">· ${escapeHtml(e.category)}</span></div>
-      <div class="countdown-sub">${e.date?fmtDateShort(e.date):''}${e.paidBy?' · '+escapeHtml(e.paidBy):''}${e.note?' · '+escapeHtml(e.note):''}</div>
+      <div style="font-weight:600;">${fmtCost(e.amount)} <span style="font-weight:400;color:var(--text-muted);">· ${escapeHtml(e.category)}${perPax}</span></div>
+      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
     </div>
-    <button class="btn btn-sm" onclick="deleteExpense('${e.tripId}','${e.id}')" title="Delete">✕</button>
+    <button class="btn btn-sm" onclick="event.stopPropagation();deleteExpense('${e.tripId}','${e.id}')" title="Delete">✕</button>
   </div>`;
 }
-async function addExpense(tripId){
+function renderExpenseReceiptUploadHtml(){
+  if(tempReceiptPath){
+    return `<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+      <img src="${coverPublicUrl(tempReceiptPath)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);">
+      <span class="muted-note" style="flex:1;">Receipt attached.</span>
+      <button type="button" class="btn btn-sm" onclick="removeExpenseReceipt()">Remove</button>
+    </div>`;
+  }
+  return `<input type="file" accept="image/*" capture="environment" id="expense-receipt-input" onchange="handleReceiptUpload(event)">
+    <span class="muted-note">Snap a photo of the receipt, or pick one from your camera roll.</span>`;
+}
+function refreshExpenseReceiptField(){
+  const row = document.getElementById('expense-receipt-row');
+  if(row) row.innerHTML = renderExpenseReceiptUploadHtml();
+}
+async function handleReceiptUpload(e){
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  const path = `shared/expenses/receipt_${Date.now()}_${sanitizeFileName(file.name)}`;
+  const { error } = await sb.storage.from('attachments').upload(path, file);
+  if(error){ alert('Receipt upload failed: '+error.message); return; }
+  tempReceiptPath = path;
+  refreshExpenseReceiptField();
+}
+function removeExpenseReceipt(){
+  tempReceiptPath = null;
+  refreshExpenseReceiptField();
+}
+function startEditExpense(tripId, expenseId){
+  const trip = getTrip(tripId);
+  const exp = trip && (trip.expenses||[]).find(e=>e.id===expenseId);
+  if(!exp) return;
+  editingExpenseId = expenseId;
+  tempReceiptPath = exp.receiptPath || null;
+  render();
+  const formEl = document.getElementById('expense-form-card');
+  if(formEl && formEl.scrollIntoView) formEl.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function cancelEditExpense(){
+  editingExpenseId = null;
+  tempReceiptPath = null;
+  render();
+}
+async function saveExpense(tripId){
   const trip = getTrip(tripId);
   if(!trip) return;
-  const amountInput = document.getElementById('expense-amount-input');
-  const amount = Number(amountInput.value);
+  const amount = Number(document.getElementById('expense-amount-input').value);
   if(!amount || amount<=0){ alert('Enter an amount greater than 0.'); return; }
   const category = document.getElementById('expense-category-input').value;
   const dateInput = document.getElementById('expense-date-input');
   const date = (dateInput && dateInput.value) ? dateInput.value : (todayWithinTrip(trip) || null);
   const paidBy = document.getElementById('expense-paidby-input').value || null;
   const note = document.getElementById('expense-note-input').value.trim() || null;
-  const payload = { trip_id: tripId, amount, category, date, paid_by: paidBy, note };
-  const { data: row, error } = await sb.from('expenses').insert(payload).select().single();
-  if(error){ alert('Could not log expense: '+error.message); return; }
-  trip.expenses = trip.expenses || [];
-  trip.expenses.push(dbExpenseToItem(row));
-  render();
+  const payload = { trip_id: tripId, amount, category, date, paid_by: paidBy, note, receipt_path: tempReceiptPath || null };
+  if(editingExpenseId){
+    const { data: row, error } = await sb.from('expenses').update(payload).eq('id', editingExpenseId).select().single();
+    if(error){ alert('Could not update expense: '+error.message); return; }
+    const idx = (trip.expenses||[]).findIndex(e=>e.id===editingExpenseId);
+    if(idx>-1) trip.expenses[idx] = dbExpenseToItem(row);
+    editingExpenseId = null;
+    tempReceiptPath = null;
+    render();
+  } else {
+    const { data: row, error } = await sb.from('expenses').insert(payload).select().single();
+    if(error){ alert('Could not log expense: '+error.message); return; }
+    trip.expenses = trip.expenses || [];
+    trip.expenses.push(dbExpenseToItem(row));
+    tempReceiptPath = null;
+    render();
+  }
 }
 async function deleteExpense(tripId, expenseId){
   const trip = getTrip(tripId);
   if(!trip) return;
+  const exp = (trip.expenses||[]).find(e=>e.id===expenseId);
   try{ await sb.from('expenses').delete().eq('id', expenseId); }catch(e){}
+  if(exp && exp.receiptPath){ try{ await sb.storage.from('attachments').remove([exp.receiptPath]); }catch(e){} }
   trip.expenses = (trip.expenses||[]).filter(e=>e.id!==expenseId);
+  if(editingExpenseId===expenseId){ editingExpenseId=null; tempReceiptPath=null; }
   render();
 }
 
