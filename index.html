@@ -988,7 +988,9 @@ function computeCountdownInfo(){
   let candidates = [];
   data.trips.forEach(trip=>{
     (trip.items||[]).forEach(item=>{
-      if(item.isPoi || !item.dateStart) return;
+      // Only confirmed plans are worth an "at a glance" countdown — a "To Book" or "Nil"
+      // item isn't a real commitment yet, so surfacing it here would be misleading.
+      if(item.isPoi || !item.dateStart || item.status!=='Booked') return;
       candidates.push({ item, trip });
     });
   });
