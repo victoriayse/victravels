@@ -652,6 +652,8 @@ function itemTimeLabel(item){
   if(item.timeEnd && item.timeEnd!==item.timeStart) return fmtTime(item.timeStart)+' – '+fmtTime(item.timeEnd);
   return fmtTime(item.timeStart);
 }
+// Day numbering is 0-indexed throughout the app (the first day of a trip is "Day 0"),
+// so a dayNum here is always a plain zero-based offset from trip.startDate.
 function itemMatchesDay(item, trip, dayNum){
   if(!item.dateStart || !trip.startDate) return false;
   // Multi-day items (dateEnd > dateStart) get a real continuation row per extra day
@@ -659,7 +661,7 @@ function itemMatchesDay(item, trip, dayNum){
   // day tab is a straight equality check — a range check here would make the original
   // multi-day parent row bleed into every day it spans, double-showing it alongside
   // its own continuation card (visible as a stray extra pin on the map, for instance).
-  const dayDate = addDays(trip.startDate, dayNum-1);
+  const dayDate = addDays(trip.startDate, dayNum);
   return item.dateStart === dayDate;
 }
 function jumpToDateDay(tripId, dateStr){
@@ -667,8 +669,8 @@ function jumpToDateDay(tripId, dateStr){
   const trip = getTrip(tripId);
   if(!trip || !trip.startDate) return;
   const numDays = tripDays(trip);
-  let dayNum = daysBetween(trip.startDate, dateStr) + 1;
-  dayNum = Math.max(1, Math.min(numDays, dayNum));
+  let dayNum = daysBetween(trip.startDate, dateStr);
+  dayNum = Math.max(0, Math.min(numDays-1, dayNum));
   ui.dayFilter = String(dayNum);
   render();
 }
@@ -684,7 +686,7 @@ function dayOptionsHtml(trip, selectedDate, includeBlank){
   let matched = !selectedDate;
   for(let i=0;i<numDays;i++){
     const d = addDays(trip.startDate, i);
-    const dayNum = i+1;
+    const dayNum = i;
     if(d===selectedDate) matched = true;
     html += `<option value="${d}" ${selectedDate===d?'selected':''}>${escapeHtml(dayOptionLabel(trip, d, dayNum))}</option>`;
   }
@@ -1043,7 +1045,7 @@ let countdownStripTimer = setInterval(renderCountdownStrip, 60000);
 const MAP_DAY_COLORS = COLOR_PALETTE;
 function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
-  return daysBetween(trip.startDate, item.dateStart)+1;
+  return daysBetween(trip.startDate, item.dateStart);
 }
 function makeDayPinIcon(glyph, color){
   return L.divIcon({
@@ -1125,10 +1127,12 @@ async function initTripMap(trip, dayItems, poiItems){
       const dayNum = dayNumberFor(trip, item);
       // A pin uses the same icon and color already set on the activity's card
       // (customizable there) — only falls back to an automatic color if none was chosen.
-      const color = item.cardColor || MAP_DAY_COLORS[((dayNum||1)-1) % MAP_DAY_COLORS.length];
+      // Day numbering is 0-indexed, so "Day 0" is a real, valid value here — checks below
+      // use dayNum==null (not truthiness) so it isn't mistaken for "no day number".
+      const color = item.cardColor || MAP_DAY_COLORS[(dayNum==null?0:dayNum) % MAP_DAY_COLORS.length];
       const glyph = iconGlyphHtml(item, 16);
       icon = makeDayPinIcon(glyph, color);
-      extra = dayNum? '<br>Day '+dayNum : '';
+      extra = dayNum!=null ? '<br>Day '+dayNum : '';
     }
     const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
     // Desktop (real mouse hover) gets a lightweight tooltip with the basics on hover;
@@ -1323,7 +1327,7 @@ function renderCountdownCard(trip){
     const d = daysBetween(t, trip.startDate);
     num = d; sub = d===1 ? 'day to go' : 'days to go';
   } else if(t <= trip.endDate){
-    const dayNum = daysBetween(trip.startDate, t)+1;
+    const dayNum = daysBetween(trip.startDate, t);
     num = 'Day '+dayNum; sub = 'of '+tripDays(trip)+' — trip in progress';
   } else {
     const d = daysBetween(trip.endDate, t);
@@ -1692,7 +1696,7 @@ function renderTripDetail(){
   lastTripDetailItems = items;
   // Prefills the Add Activity date to the day currently being viewed, so creating an
   // activity while on Day 3's tab doesn't default to a blank/unrelated date.
-  const addDefaultDate = (ui.dayFilter!=='all' && trip.startDate) ? addDays(trip.startDate, Number(ui.dayFilter)-1) : '';
+  const addDefaultDate = (ui.dayFilter!=='all' && trip.startDate) ? addDays(trip.startDate, Number(ui.dayFilter)) : '';
 
   return `
     <button class="back-link" style="margin-top:24px;" onclick="ui.view='trips';render();">&larr; Back to Trips</button>
@@ -1717,7 +1721,7 @@ function renderTripDetail(){
 
     <div class="filter-bar">
       <button class="day-btn ${ui.dayFilter==='all'?'active':''}" onclick="ui.dayFilter='all';render();">All Days</button>
-      ${Array.from({length:numDays}).map((_,i)=>`<button class="day-btn ${ui.dayFilter==String(i+1)?'active':''}" onclick="ui.dayFilter='${i+1}';render();">Day ${i+1}</button>`).join('')}
+      ${Array.from({length:numDays}).map((_,i)=>`<button class="day-btn ${ui.dayFilter==String(i)?'active':''}" onclick="ui.dayFilter='${i}';render();">Day ${i}</button>`).join('')}
     </div>
     <div class="filter-bar">
       <select class="filter-select" onchange="ui.typeFilter=this.value;render();">
@@ -1823,7 +1827,7 @@ function renderItemList(items, trip){
   const noDate = [];
   items.forEach(i=>{
     if(!i.dateStart || !trip.startDate){ noDate.push(i); return; }
-    const d = daysBetween(trip.startDate, i.dateStart)+1;
+    const d = daysBetween(trip.startDate, i.dateStart);
     groups[d] = groups[d]||[];
     groups[d].push(i);
   });
@@ -2566,7 +2570,7 @@ function renderTripExpenses(){
       </select>
       ${trip.startDate? `<select class="filter-select" onchange="ui.expenseDayFilter=this.value;render();">
         <option value="all" ${filterDay==='all'?'selected':''}>All Days</option>
-        ${Array.from({length:numDays}).map((_,i)=>{ const d=addDays(trip.startDate,i); return `<option value="${d}" ${filterDay===d?'selected':''}>Day ${i+1} · ${fmtDateShort(d)}</option>`; }).join('')}
+        ${Array.from({length:numDays}).map((_,i)=>{ const d=addDays(trip.startDate,i); return `<option value="${d}" ${filterDay===d?'selected':''}>Day ${i} · ${fmtDateShort(d)}</option>`; }).join('')}
       </select>` : ''}
     </div>
 
@@ -2594,7 +2598,7 @@ function groupExpensesByDate(list){
 }
 function renderExpenseGroupHtml(group, trip){
   const hasDate = group.date!=='No date';
-  const dayLabel = (hasDate && trip.startDate) ? `Day ${daysBetween(trip.startDate, group.date)+1} · ${fmtDateShort(group.date)}` : (hasDate ? fmtDateShort(group.date) : 'No date');
+  const dayLabel = (hasDate && trip.startDate) ? `Day ${daysBetween(trip.startDate, group.date)} · ${fmtDateShort(group.date)}` : (hasDate ? fmtDateShort(group.date) : 'No date');
   return `
     <div style="margin-bottom:18px;">
       <div class="expense-day-header">
