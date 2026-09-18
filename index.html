@@ -544,15 +544,15 @@
 
 <script>
 /* ============ UTILITIES ============ */
-const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Shopping:'🛍️',Misc:'📌'};
-const TYPES = ['Flight','Transport','Food','Activity','Stays','Shopping','Misc'];
-const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Shopping:'#c9577a',Misc:'#948d7c'};
+const TYPE_ICONS = {Flight:'✈️',Transport:'🚗',Food:'🍜',Activity:'🎟️',Stays:'🛏️',Shopping:'🛍️',Supermarket:'🛒',Misc:'📌'};
+const TYPES = ['Flight','Transport','Food','Activity','Stays','Shopping','Supermarket','Misc'];
+const TYPE_COLORS = {Flight:'#0f5257',Transport:'#2f6690',Food:'#b8874a',Activity:'#3d8361',Stays:'#7a5195',Shopping:'#c9577a',Supermarket:'#5c8a3a',Misc:'#948d7c'};
 const STATUSES = ['Booked','To Book','Nil'];
 // Ad-hoc daily spending (Trip Expenses page) is a separate concept from booked activity
 // costs — its own small category set, kept distinct from TYPES so "Activities" here can't
 // be confused with the itinerary's "Activity" item type.
-const EXPENSE_CATEGORIES = ['Food','Shopping','Transport','Activities','Other'];
-const EXPENSE_CATEGORY_ICONS = {Food:'🍜',Shopping:'🛍️',Transport:'🚗',Activities:'🎟️',Other:'💸'};
+const EXPENSE_CATEGORIES = ['Food','Shopping','Transport','Activities','Supermarket','Other'];
+const EXPENSE_CATEGORY_ICONS = {Food:'🍜',Shopping:'🛍️',Transport:'🚗',Activities:'🎟️',Supermarket:'🛒',Other:'💸'};
 const BOOKED_BY = ['Victoria','Weng Seng'];
 const ICON_GROUPS = [
   { group:'Transport', icons:[['🚗','Car'],['🚆','Train'],['🚌','Bus'],['⛴️','Ferry'],['🚕','Taxi'],['🚲','Bike'],['🛵','Scooter'],['🚶','Walk'],['🚠','Cable Car']] },
@@ -1027,6 +1027,7 @@ function guessTypeFromPlaceName(name){
   if(/hotel|hostel|airbnb|\binn\b|resort|apartment|guesthouse|stay/.test(s)) return 'Stays';
   if(/restaurant|caf[eé]|bistro|\bbar\b|noodle|kitchen|eatery|diner/.test(s)) return 'Food';
   if(/airport|station|railway|\btrain\b/.test(s)) return 'Transport';
+  if(/supermarket|grocery|groceries|\balbert heijn\b|\bjumbo\b|\blidl\b|\baldi\b/.test(s)) return 'Supermarket';
   if(/mall|market|shop|store|boutique/.test(s)) return 'Shopping';
   return null;
 }
@@ -3039,11 +3040,12 @@ function renderExpenseGroupHtml(group, trip){
     </div>`;
 }
 // Each row doubles as an edit trigger (tap anywhere on it) — the receipt thumbnail and
-// delete button stop propagation so they act independently of that.
+// delete button stop propagation so they act independently of that. position:relative here
+// anchors the delete-confirmation popover (see showDeleteExpenseConfirm) to this specific row.
 function renderExpenseRow(e, trip){
   const perPax = (trip && trip.pax>1 && Number(e.amount)>0) ? ` · ${fmtCost(Number(e.amount)/trip.pax)}/pax` : '';
   const metaBits = [e.paidBy? escapeHtml(e.paidBy):'', e.note? escapeHtml(e.note):''].filter(Boolean).join(' · ');
-  return `<div class="card expense-row" style="margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="startEditExpense('${e.tripId}','${e.id}')">
+  return `<div class="card expense-row" id="expense-row-${e.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="startEditExpense('${e.tripId}','${e.id}')">
     ${e.receiptPath
       ? `<a href="${coverPublicUrl(e.receiptPath)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><img src="${coverPublicUrl(e.receiptPath)}" alt="Receipt" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0;"></a>`
       : `<div style="font-size:20px;flex-shrink:0;">${EXPENSE_CATEGORY_ICONS[e.category]||'💸'}</div>`}
@@ -3051,8 +3053,29 @@ function renderExpenseRow(e, trip){
       <div style="font-weight:600;">${fmtCost(e.amount)} <span style="font-weight:400;color:var(--text-muted);">· ${escapeHtml(e.category)}${perPax}</span></div>
       ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
     </div>
-    <button class="btn btn-sm" onclick="event.stopPropagation();deleteExpense('${e.tripId}','${e.id}')" title="Delete">✕</button>
+    <button class="btn btn-sm" onclick="event.stopPropagation();startEditExpense('${e.tripId}','${e.id}')" title="Edit">✏️</button>
+    <button class="btn btn-sm" onclick="showDeleteExpenseConfirm(event,'${e.tripId}','${e.id}')" title="Delete">✕</button>
   </div>`;
+}
+// A tap on "✕" used to delete the expense immediately — one careless tap on a phone and a
+// logged expense was gone with no way back. This shows the same inline confirm-box pattern
+// already used for deleting an activity, instead of deleting straight away.
+function showDeleteExpenseConfirm(e, tripId, expenseId){
+  e.stopPropagation();
+  const row = document.getElementById('expense-row-'+expenseId);
+  if(!row) return;
+  const existing = row.querySelector('.confirm-box');
+  if(existing){ existing.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'popover confirm-box';
+  box.innerHTML = `
+    <p>Delete this expense? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm" style="flex:1;" onclick="event.stopPropagation();this.closest('.confirm-box').remove()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="event.stopPropagation();deleteExpense('${tripId}','${expenseId}')">Delete</button>
+    </div>`;
+  box.addEventListener('click', e2=>e2.stopPropagation());
+  row.appendChild(box);
 }
 function renderExpenseReceiptUploadHtml(){
   if(tempReceiptPath){
