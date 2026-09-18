@@ -3052,8 +3052,11 @@ function renderExpenseReceiptUploadHtml(){
       <button type="button" class="btn btn-sm" onclick="removeExpenseReceipt()">Remove</button>
     </div>`;
   }
-  return `<input type="file" accept="image/*" capture="environment" id="expense-receipt-input" onchange="handleReceiptUpload(event)">
-    <span class="muted-note">Snap a photo of the receipt, or pick one from your camera roll.</span>`;
+  // No "capture" attribute here on purpose — it forces mobile browsers straight into the
+  // camera app, skipping the normal picker that also offers the photo gallery/files. Leaving
+  // it off lets the OS show its usual chooser (camera, gallery, or files) instead.
+  return `<input type="file" accept="image/*" id="expense-receipt-input" onchange="handleReceiptUpload(event)">
+    <span class="muted-note">Snap a photo of the receipt, or pick one from your gallery.</span>`;
 }
 // Sends the just-uploaded receipt photo to the scan-receipt Edge Function, which calls
 // Claude's vision model server-side (so the Anthropic API key never touches the browser) to
