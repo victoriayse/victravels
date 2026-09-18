@@ -1389,7 +1389,7 @@ function loadGoogleMaps(){
     if(window.google && window.google.maps){ resolve(window.google.maps); return; }
     window.__onGoogleMapsLoaded = ()=> resolve(window.google.maps);
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async&callback=__onGoogleMapsLoaded`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&loading=async&callback=__onGoogleMapsLoaded`;
     script.async = true;
     script.onerror = ()=> reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
@@ -1457,6 +1457,9 @@ async function initTripMap(trip, dayItems, poiItems){
   }
   function addPin(item, isStar){
     if(item.lat==null || item.lng==null) return;
+    // Wrapped defensively: one bad pin (or a transient Maps API hiccup) shouldn't take
+    // down every other pin on the map along with it.
+    try {
     let el, extraText;
     if(isStar){
       el = makeStarPinEl(explicitIconGlyphHtml(item, 14));
@@ -1482,6 +1485,7 @@ async function initTripMap(trip, dayItems, poiItems){
     el.addEventListener('click', ()=> openItemDetailModal(trip.id, item.id));
     markers.push(marker);
     if(!isStar) fitMarkers.push(marker);
+    } catch(e){ console.error('addPin failed for', item && item.id, e); }
   }
 
   const combined = [
