@@ -490,10 +490,13 @@
     box-shadow:0 2px 6px rgba(0,0,0,0.3);
   }
   .card-distance-badge{
-    display:flex;align-items:center;gap:6px;margin:2px 0 2px 22px;padding:2px 0;
+    position:relative;display:flex;align-items:center;gap:6px;margin:2px 0 2px 22px;padding:2px 0;
     font-size:12.5px;color:var(--text-muted);min-height:1px;
   }
   .card-distance-badge:empty{display:none;}
+  .card-distance-badge.ready{cursor:pointer;}
+  .card-distance-badge.ready:hover{color:var(--text);}
+  .card-distance-badge .popover{top:22px;left:0;right:auto;min-width:180px;}
 
   /* PRESET COLOR PICKER (Card Color field) — a trigger swatch that opens a panel of
      fixed, precomputed swatches (quick colors + a hue/lightness grid), never an open
@@ -1114,6 +1117,28 @@ async function computeRouteLeg(originLat, originLng, destLat, destLng, mode){
 // desktop, from wherever the user currently is to the given point.
 function googleMapsDirectionsUrl(lat, lng){
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+}
+// Same free Google Maps link scheme, but between two known points (an activity-to-activity
+// hop) rather than from the user's current GPS position — no API key needed, just a link.
+function googleMapsDirectionsUrlBetween(fromLat, fromLng, toLat, toLng, mode){
+  return `https://www.google.com/maps/dir/?api=1&origin=${fromLat},${fromLng}&destination=${toLat},${toLng}&travelmode=${mode}`;
+}
+// Tapping a distance badge between two cards offers both allowed navigation methods —
+// walking or public transit — each opening real turn-by-turn directions in Google Maps.
+function showNavMethodsPopover(e, fromLat, fromLng, toLat, toLng){
+  e.stopPropagation();
+  const badge = e.currentTarget;
+  const existing = badge.querySelector('.popover');
+  closePopovers();
+  if(existing) return;
+  const pop = document.createElement('div');
+  pop.className = 'popover';
+  pop.innerHTML = `
+    <button onclick="event.stopPropagation();window.open('${googleMapsDirectionsUrlBetween(fromLat,fromLng,toLat,toLng,'walking')}','_blank');closePopovers();">🚶 Walking directions</button>
+    <button onclick="event.stopPropagation();window.open('${googleMapsDirectionsUrlBetween(fromLat,fromLng,toLat,toLng,'transit')}','_blank');closePopovers();">🚆 Transit directions</button>
+  `;
+  pop.addEventListener('click', e2=>e2.stopPropagation());
+  badge.appendChild(pop);
 }
 
 /* ---- Nearby activities ---- */
@@ -2264,6 +2289,8 @@ async function loadDistanceBadges(trip, items){
       if(!leg) continue;
       const icon = mode==='transit' ? '🚆' : '🚶';
       el.innerHTML = `${icon} ${formatRouteDuration(leg.seconds)} · ${formatDistance(leg.meters)}`;
+      el.classList.add('ready');
+      el.onclick = (ev)=> showNavMethodsPopover(ev, a.lat, a.lng, b.lat, b.lng);
     }
   }
 }
