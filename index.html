@@ -6,8 +6,6 @@
 <title>VicTravels</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -491,8 +489,11 @@
     color:#c9971f;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
     box-shadow:0 2px 6px rgba(0,0,0,0.3);
   }
-  .leaflet-popup-content{font-family:var(--font-sans);font-size:13px;}
-  .leaflet-tooltip{font-family:var(--font-sans);font-size:12.5px;padding:6px 10px;}
+  .card-distance-badge{
+    display:flex;align-items:center;gap:6px;margin:2px 0 2px 22px;padding:2px 0;
+    font-size:12.5px;color:var(--text-muted);min-height:1px;
+  }
+  .card-distance-badge:empty{display:none;}
 
   /* PRESET COLOR PICKER (Card Color field) — a trigger swatch that opens a panel of
      fixed, precomputed swatches (quick colors + a hue/lightness grid), never an open
@@ -1074,6 +1075,40 @@ function formatDistance(meters){
   if(meters < 1000) return Math.round(meters) + ' m';
   return (meters/1000).toFixed(1) + ' km';
 }
+function formatRouteDuration(seconds){
+  const mins = Math.round(seconds/60);
+  if(mins < 1) return '<1 min';
+  if(mins < 60) return mins + ' min';
+  const h = Math.floor(mins/60), m = mins % 60;
+  return h + 'h' + (m ? ' '+m+'m' : '');
+}
+// Google's Routes API — used only for the two allowed modes (walking, public transit; no
+// driving). Costs nothing at this app's scale: Routes: Compute Routes Essentials gives
+// 10,000 free calls/month, and a couple of people's daily itinerary has nowhere near that.
+async function computeRouteLeg(originLat, originLng, destLat, destLng, mode){
+  try {
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
+        destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
+        travelMode: mode, // 'WALK' or 'TRANSIT'
+      }),
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if(!route) return null;
+    return { seconds: parseInt(route.duration, 10) || 0, meters: route.distanceMeters || 0 };
+  } catch(e){
+    return null;
+  }
+}
 // A plain Google Maps URL (no API key required — this is just a link, not an API call) that
 // opens turn-by-turn directions in the Google Maps app on mobile, or maps.google.com on
 // desktop, from wherever the user currently is to the given point.
@@ -1249,6 +1284,9 @@ function afterRender(){
   if(ui.view==='poi' && lastTripDetailTrip && document.getElementById('trip-map')){
     initTripMap(lastTripDetailTrip, [], (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
+  if(ui.view==='tripDetail' && lastTripDetailTrip){
+    loadDistanceBadges(lastTripDetailTrip, lastTripDetailItems);
+  }
   renderCountdownStrip();
   syncDayNavSticky();
 }
@@ -1334,76 +1372,74 @@ function renderCountdownStrip(){
 }
 let countdownStripTimer = setInterval(renderCountdownStrip, 60000);
 
-/* ---- Trip map (Leaflet + OpenStreetMap — free, no API key needed) ---- */
+/* ---- Trip map (Google Maps JavaScript API) ---- */
 // Falls back to cycling through the same preset palette used for card colors, so a
 // pin that hasn't been given a custom color still gets a sensible, distinct one.
 const MAP_DAY_COLORS = COLOR_PALETTE;
+// This key is restricted in Google Cloud to victoriayse.github.io only, and to just the
+// Maps JavaScript + Routes APIs — safe to ship client-side, which is how Google's own
+// docs expect it to be used (the referrer restriction is the actual security boundary).
+const GOOGLE_MAPS_API_KEY = 'AIzaSyD6aCQufLUPhOZa1wvclh1BFG787q9Q67s';
+let googleMapsLoadPromise = null;
+// Loaded on first use rather than on every page load, since most page views (home,
+// expenses, etc.) never touch the map.
+function loadGoogleMaps(){
+  if(googleMapsLoadPromise) return googleMapsLoadPromise;
+  googleMapsLoadPromise = new Promise((resolve, reject)=>{
+    if(window.google && window.google.maps){ resolve(window.google.maps); return; }
+    window.__onGoogleMapsLoaded = ()=> resolve(window.google.maps);
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async&callback=__onGoogleMapsLoaded`;
+    script.async = true;
+    script.onerror = ()=> reject(new Error('Failed to load Google Maps'));
+    document.head.appendChild(script);
+  });
+  return googleMapsLoadPromise;
+}
 function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
   return daysBetween(trip.startDate, item.dateStart);
 }
-function makeDayPinIcon(glyph, color){
-  return L.divIcon({
-    className: '',
-    html: `<div class="map-pin" style="background:${color};"><span>${glyph||''}</span></div>`,
-    iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-28],
-  });
+function makeDayPinEl(glyph, color){
+  const el = document.createElement('div');
+  el.className = 'map-pin';
+  el.style.background = color;
+  el.innerHTML = `<span>${glyph||''}</span>`;
+  return el;
 }
-function makeStarPinIcon(glyph){
-  return L.divIcon({
-    className: '',
-    html: `<div class="map-star">${glyph||'★'}</div>`,
-    iconSize: [24,24], iconAnchor: [12,12], popupAnchor: [0,-12],
-  });
-}
-// Real touchscreens get pinch-zoom for free from Leaflet's touchZoom handler.
-// Trackpads report pinch gestures differently per browser: Chrome/Firefox fire
-// wheel events with ctrlKey=true, Safari fires gesturestart/change/end with a
-// scale factor. scrollWheelZoom stays off (so a plain two-finger scroll pans the
-// page, not the map) — this only reacts to the pinch-specific signals.
-function enableTrackpadPinchZoom(map, container){
-  container.addEventListener('wheel', e=>{
-    if(!e.ctrlKey) return;
-    e.preventDefault();
-    const targetZoom = map.getZoom() - e.deltaY * 0.015;
-    map.setZoom(targetZoom, { animate:false });
-  }, { passive:false });
-
-  let gestureStartZoom = null;
-  container.addEventListener('gesturestart', e=>{
-    e.preventDefault();
-    gestureStartZoom = map.getZoom();
-  });
-  container.addEventListener('gesturechange', e=>{
-    e.preventDefault();
-    if(gestureStartZoom==null) return;
-    map.setZoom(gestureStartZoom + Math.log2(e.scale), { animate:false });
-  });
-  container.addEventListener('gestureend', e=>{
-    e.preventDefault();
-    gestureStartZoom = null;
-  });
+function makeStarPinEl(glyph){
+  const el = document.createElement('div');
+  el.className = 'map-star';
+  el.innerHTML = glyph || '★';
+  return el;
 }
 async function initTripMap(trip, dayItems, poiItems){
   poiItems = poiItems || [];
   const container = document.getElementById('trip-map');
   const statusEl = document.getElementById('trip-map-status');
-  if(!container || typeof L==='undefined') return;
+  if(!container) return;
   const myToken = ++tripMapRenderToken;
-  if(tripMapInstance){ tripMapInstance.remove(); tripMapInstance = null; }
 
-  const map = L.map(container, { scrollWheelZoom:false, zoomControl:false, touchZoom:true, tap:true, bounceAtZoomLimits:false }).setView([20,0], 2);
-  // Switched from tile.openstreetmap.org — OSM's own tile servers are volunteer-run and
-  // only meant for casual/low-volume use, and they started 403-blocking this app once real
-  // traffic hit them. CARTO's free-tier basemap (5M tiles/month, no cost) is meant for
-  // exactly this kind of embedded use.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3pgo_1_845ecf9bbbdc321e17ffb2ac', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20,
-  }).addTo(map);
+  let googleMaps;
+  try {
+    googleMaps = await loadGoogleMaps();
+  } catch(e){
+    if(statusEl) statusEl.textContent = 'Could not load Google Maps.';
+    return;
+  }
+  if(tripMapRenderToken !== myToken) return; // a newer render superseded this one — stop
+
+  // gestureHandling:'cooperative' reproduces the old custom pinch-zoom behavior with no
+  // extra code: a plain one-finger touch drag or mouse-wheel scroll moves the page (not
+  // the map), while a two-finger touch drag or ctrl+scroll/trackpad pinch zooms the map.
+  // mapId:'DEMO_MAP_ID' is Google's documented placeholder for using Advanced Markers
+  // without needing a configured Map ID in the console.
+  const map = new googleMaps.Map(container, {
+    center:{ lat:20, lng:0 }, zoom:2,
+    gestureHandling:'cooperative', zoomControl:false, streetViewControl:false,
+    mapTypeControl:false, fullscreenControl:false, mapId:'DEMO_MAP_ID',
+  });
   tripMapInstance = map;
-  enableTrackpadPinchZoom(map, container);
 
   const markers = [];
   // Places of Interest stars still get plotted on the map (visible if they happen to fall
@@ -1414,15 +1450,17 @@ async function initTripMap(trip, dayItems, poiItems){
   function fitToMarkers(){
     const list = fitMarkers.length ? fitMarkers : markers;
     if(!list.length) return;
-    if(list.length===1){ map.setView(list[0].getLatLng(), 14); return; }
-    map.fitBounds(L.featureGroup(list).getBounds().pad(0.2));
+    if(list.length===1){ map.setCenter(list[0].position); map.setZoom(14); return; }
+    const bounds = new googleMaps.LatLngBounds();
+    list.forEach(m=>bounds.extend(m.position));
+    map.fitBounds(bounds, 48);
   }
   function addPin(item, isStar){
     if(item.lat==null || item.lng==null) return;
-    let icon, extra;
+    let el, extraText;
     if(isStar){
-      icon = makeStarPinIcon(explicitIconGlyphHtml(item, 14));
-      extra = item.type ? `<br>${iconGlyphHtml(item, 14)} ${escapeHtml(item.type)}` : '';
+      el = makeStarPinEl(explicitIconGlyphHtml(item, 14));
+      extraText = item.type ? ` · ${item.type}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
       // A pin uses the same icon and color already set on the activity's card
@@ -1431,17 +1469,17 @@ async function initTripMap(trip, dayItems, poiItems){
       // use dayNum==null (not truthiness) so it isn't mistaken for "no day number".
       const color = item.cardColor || MAP_DAY_COLORS[(dayNum==null?0:dayNum) % MAP_DAY_COLORS.length];
       const glyph = iconGlyphHtml(item, 16);
-      icon = makeDayPinIcon(glyph, color);
-      extra = dayNum!=null ? '<br>Day '+dayNum : '';
+      el = makeDayPinEl(glyph, color);
+      extraText = dayNum!=null ? ` · Day ${dayNum}` : '';
     }
-    const marker = L.marker([item.lat, item.lng], { icon }).addTo(map);
-    // Desktop (real mouse hover) gets a lightweight tooltip with the basics on hover;
-    // touch devices skip it since there's no hover to trigger it. Either way, clicking/
-    // tapping the pin opens the same full activity detail popup a card click does.
-    if(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches){
-      marker.bindTooltip(`<strong>${escapeHtml(item.name||'Untitled')}</strong>${(!isStar && item.timeStart)? '<br>'+itemTimeLabel(item):''}${extra}`, { direction:'top', offset:[0,-24] });
-    }
-    marker.on('click', ()=> openItemDetailModal(trip.id, item.id));
+    // A plain-text title attribute stands in for the old rich hover tooltip — simpler,
+    // and works fine since it's just supplementary info on top of the pin itself.
+    el.title = `${item.name||'Untitled'}${(!isStar && item.timeStart)? ' · '+itemTimeLabel(item):''}${extraText}`;
+    el.style.cursor = 'pointer';
+    const marker = new googleMaps.marker.AdvancedMarkerElement({
+      map, position:{ lat:item.lat, lng:item.lng }, content:el,
+    });
+    el.addEventListener('click', ()=> openItemDetailModal(trip.id, item.id));
     markers.push(marker);
     if(!isStar) fitMarkers.push(marker);
   }
@@ -1603,7 +1641,6 @@ function renderHome(){
       </select>
     </div>
     ${renderCurrencyConverterCard()}
-    ${renderBudgetCard(trip)}
     <div class="home-grid">
       ${renderCountdownCard(trip)}
       ${renderOverviewCard(trip)}
@@ -1619,27 +1656,6 @@ function renderHome(){
   `;
 }
 
-// "Spent so far" combines booked activity costs (the itinerary's own cost fields) and the
-// separate ad-hoc Trip Expenses log — the two things that together represent real spend —
-// against an optional target budget set on the trip, so there's a one-glance answer to
-// "how are we doing" without opening either Expenses view.
-function renderBudgetCard(trip){
-  const activityCost = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+(Number(i.costTotal)||0),0);
-  const expensesCost = (trip.expenses||[]).reduce((s,e)=>s+(Number(e.amount)||0),0);
-  const spent = activityCost + expensesCost;
-  const hasBudget = trip.budget!=null && trip.budget>0;
-  const pct = hasBudget ? Math.min(100, Math.round((spent/trip.budget)*100)) : 0;
-  const over = hasBudget && spent > trip.budget;
-  return `
-    <div class="card" onclick="openTripExpenses('${trip.id}')" style="cursor:pointer;">
-      <div class="section-title">Budget</div>
-      <div class="budget-row">
-        <div class="budget-spent">${fmtCost(spent)}</div>
-        ${hasBudget? `<div class="budget-target">of ${fmtCost(trip.budget)} ${over?'— over budget':'budget'}</div>` : `<div class="budget-target">spent so far · <a href="#" onclick="event.stopPropagation();event.preventDefault();openAddTripModal('${trip.id}')" style="color:var(--primary-dark);font-weight:600;">set a budget</a></div>`}
-      </div>
-      ${hasBudget? `<div class="budget-track"><div class="budget-fill ${over?'over':''}" style="width:${pct}%;"></div></div>` : ''}
-    </div>`;
-}
 function renderCountdownCard(trip){
   const t = todayStr();
   let num='', sub='';
@@ -2027,6 +2043,7 @@ function updateItemSearch(tripId, value){
   lastTripDetailItems = items;
   const listEl = document.getElementById('item-list');
   if(listEl) listEl.innerHTML = items.length===0? '<div class="empty-state"><span class="emoji">📋</span><p>No activities match this view.</p></div>' : renderItemList(items, trip);
+  loadDistanceBadges(trip, items);
 }
 function renderTripDetail(){
   const trip = getTrip(ui.detailTripId);
@@ -2167,9 +2184,26 @@ function renderPlacesOfInterest(){
   `;
 }
 
+// Interleaves a distance-badge placeholder between each pair of consecutive cards (skipped
+// across a Place of Interest, which isn't part of the day's walking sequence). The badges
+// start empty and are filled in afterwards by loadDistanceBadges() once coordinates for
+// both ends are known — keeps the initial render instant, no request-per-render-call.
+function renderItemsWithDistanceBadges(items, trip){
+  let html = '';
+  items.forEach((item, idx)=>{
+    html += renderItemCard(item, trip);
+    if(idx < items.length-1){
+      const next = items[idx+1];
+      if(!item.isPoi && !next.isPoi){
+        html += `<div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>`;
+      }
+    }
+  });
+  return html;
+}
 function renderItemList(items, trip){
   if(ui.dayFilter!=='all'){
-    return `<div class="drag-group" data-group="single">${items.map(i=>renderItemCard(i, trip)).join('')}</div>`;
+    return `<div class="drag-group" data-group="single">${renderItemsWithDistanceBadges(items, trip)}</div>`;
   }
   // group by day when showing all (items already sorted earliest-to-latest).
   // Multi-day continuation duplicates are real rows with their own single-day date, so
@@ -2186,13 +2220,48 @@ function renderItemList(items, trip){
   Object.keys(groups).sort((a,b)=>a-b).forEach(day=>{
     const title = trip.dayTitles && trip.dayTitles[day] ? ` · ${escapeHtml(trip.dayTitles[day])}` : '';
     html += `<div class="day-group-label">Day ${day} · ${fmtDateShort(groups[day][0].dateStart)}${title}</div>`;
-    html += `<div class="drag-group" data-group="day-${day}">${groups[day].map(i=>renderItemCard(i, trip)).join('')}</div>`;
+    html += `<div class="drag-group" data-group="day-${day}">${renderItemsWithDistanceBadges(groups[day], trip)}</div>`;
   });
   if(noDate.length){
     html += `<div class="day-group-label">No date set</div>`;
     html += `<div class="drag-group" data-group="nodate">${noDate.map(i=>renderItemCard(i, trip)).join('')}</div>`;
   }
   return html;
+}
+// Fills in each distance-badge placeholder left by renderItemsWithDistanceBadges(), one
+// consecutive pair at a time. Walking is tried first; if it's a long-looking hop (>20 min
+// on foot) transit is tried too and shown instead when it's actually available for that
+// leg. A pair with no coordinates yet (still geocoding) or a failed lookup is left blank —
+// the placeholder's CSS collapses to nothing rather than showing a wrong or stuck number.
+let distanceBadgeRenderToken = 0;
+async function loadDistanceBadges(trip, items){
+  if(!trip || !items || !items.length) return;
+  const myToken = ++distanceBadgeRenderToken;
+  const dayGroups = {};
+  items.forEach(i=>{
+    if(i.isPoi || !i.dateStart || !trip.startDate) return;
+    const d = daysBetween(trip.startDate, i.dateStart);
+    dayGroups[d] = dayGroups[d]||[];
+    dayGroups[d].push(i);
+  });
+  for(const day of Object.keys(dayGroups)){
+    const dayItems = dayGroups[day];
+    for(let idx=0; idx<dayItems.length-1; idx++){
+      const a = dayItems[idx], b = dayItems[idx+1];
+      const el = document.getElementById(`distbadge-${a.id}-${b.id}`);
+      if(!el || a.lat==null || a.lng==null || b.lat==null || b.lng==null) continue;
+      let leg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'WALK');
+      let mode = 'walk';
+      if(leg && leg.seconds > 20*60){
+        const transitLeg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'TRANSIT');
+        if(transitLeg){ leg = transitLeg; mode = 'transit'; }
+      }
+      if(distanceBadgeRenderToken !== myToken) return; // a newer render superseded this one
+      if(!leg) continue;
+      const icon = mode==='transit' ? '🚆' : '🚶';
+      el.innerHTML = `${icon} ${formatRouteDuration(leg.seconds)} · ${formatDistance(leg.meters)}`;
+    }
+  }
 }
 
 function renderItemCard(item, trip){
