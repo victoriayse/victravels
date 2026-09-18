@@ -65,6 +65,28 @@
     backdrop-filter:blur(10px) saturate(1.4);
     border-bottom:1px solid var(--border);
   }
+  /* Slim progress bar shown at the very top of the page during a save/delete/upload so a
+     tap on a slow connection doesn't feel like it didn't register. */
+  #loading-bar{
+    position:fixed;top:0;left:0;height:3px;width:0;z-index:300;
+    background:linear-gradient(90deg,var(--primary),var(--primary-dark));
+    transition:width .3s ease, opacity .3s ease;opacity:0;pointer-events:none;
+  }
+  #loading-bar.active{width:70%;opacity:1;transition:width 2.2s cubic-bezier(.1,.6,.2,1), opacity .2s ease;}
+
+  /* Toast notifications — quick "Saved"/"Deleted" confirmation after an async action,
+     since most save/delete flows just silently re-render otherwise. */
+  #toast-container{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:310;
+    display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;
+  }
+  .toast{
+    background:var(--text);color:#fff;font-size:13px;font-weight:600;
+    padding:10px 18px;border-radius:999px;box-shadow:0 8px 22px rgba(10,15,14,0.28);
+    opacity:0;transform:translateY(8px);transition:opacity .2s ease, transform .2s ease;
+  }
+  .toast.show{opacity:1;transform:translateY(0);}
+  .toast.toast-error{background:var(--danger);}
   .topbar-inner{
     max-width:1000px;margin:0 auto;padding:14px 20px;
     display:flex;align-items:center;justify-content:space-between;
@@ -178,6 +200,14 @@
   .overview-stats{display:flex;gap:26px;margin-top:14px;}
   .stat-num{font-family:var(--font-serif);font-size:24px;font-weight:600;}
   .stat-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;}
+  /* Budget card — at-a-glance spend vs. an optional target, combining booked activity
+     costs and the separate ad-hoc Trip Expenses log into one "spent so far" figure. */
+  .budget-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:6px;}
+  .budget-spent{font-family:var(--font-serif);font-size:24px;font-weight:600;}
+  .budget-target{font-size:12.5px;color:var(--text-muted);}
+  .budget-track{background:var(--bg-soft);border-radius:999px;height:8px;margin-top:10px;overflow:hidden;}
+  .budget-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--primary),var(--primary-dark));transition:width .3s ease;}
+  .budget-fill.over{background:linear-gradient(90deg,var(--warning),var(--danger));}
   .flight-row{
     display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);
     cursor:pointer;
@@ -247,6 +277,22 @@
   .day-btn:hover{border-color:var(--primary);color:var(--primary-dark);}
   .day-btn.active{background:var(--text);border-color:var(--text);color:#fff;}
   .filter-select{width:auto;padding:7px 12px;font-size:12.5px;font-weight:600;border-radius:999px;}
+  /* Sticky day selector — stays put while scrolling a long day's itinerary, with prev/next
+     buttons so switching days is a tap instead of reopening the dropdown each time. The
+     "top" offset is set from JS (syncDayNavSticky) since the header's height changes
+     depending on whether the countdown strip is currently showing. */
+  .day-nav-bar{
+    position:sticky;z-index:15;background:var(--bg);
+    padding:10px 0;margin:0 0 4px;
+  }
+  .day-nav-btn{
+    border:1px solid var(--border-strong);background:#fff;border-radius:999px;
+    width:36px;height:36px;flex-shrink:0;font-size:16px;font-weight:700;cursor:pointer;
+    color:var(--text);display:flex;align-items:center;justify-content:center;
+    transition:all .15s ease;
+  }
+  .day-nav-btn:hover:not(:disabled){border-color:var(--primary);color:var(--primary-dark);}
+  .day-nav-btn:disabled{opacity:.35;cursor:default;}
   .toolbar-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
   .day-title-input{
     font-family:var(--font-serif);font-size:18px;font-weight:600;color:var(--text);
@@ -320,8 +366,14 @@
   .item-edit-btn{
     background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;
     padding:6px;border-radius:50%;flex-shrink:0;transition:all .15s ease;
+    min-width:28px;min-height:28px;display:flex;align-items:center;justify-content:center;
   }
   .item-edit-btn:hover{background:var(--bg-soft);color:var(--text);}
+  @media (max-width:480px){
+    /* A 28px tap target is tight for a thumb — widen it to the ~44px minimum recommended
+       for touch, using negative margin so the card's layout doesn't shift to make room. */
+    .item-edit-btn{min-width:44px;min-height:44px;margin:-8px -4px -8px 0;}
+  }
   .day-group-label{font-size:12px;font-weight:700;color:var(--text-muted);margin:22px 0 10px;text-transform:uppercase;letter-spacing:.06em;}
   .day-group-label:first-child{margin-top:0;}
 
@@ -453,6 +505,8 @@
 </head>
 <body>
 
+<div id="loading-bar"></div>
+<div id="toast-container"></div>
 <header class="topbar">
   <div class="topbar-inner">
     <div class="brand" onclick="setView('home')" style="cursor:pointer;"><span class="brand-mark">✈️</span> VicTravels</div>
@@ -595,6 +649,39 @@ const SUPABASE_ANON_KEY = 'sb_publishable_T3LclvJsqEnvqBdKMH-hgQ_LBiDrI9F';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+
+/* ============ UI FEEDBACK: loading bar + toasts ============
+   Most save/delete/upload flows below just silently re-render on success, which on a slow
+   mobile connection can feel like the tap didn't register. beginLoading/endLoading toggle a
+   slim top progress bar (counter-based, so overlapping calls don't hide it too early) and
+   showToast gives a quick confirmation after the fact. */
+let __loadingCount = 0;
+function beginLoading(){
+  __loadingCount++;
+  const bar = document.getElementById('loading-bar');
+  if(bar) bar.classList.add('active');
+}
+function endLoading(){
+  __loadingCount = Math.max(0, __loadingCount-1);
+  if(__loadingCount===0){
+    const bar = document.getElementById('loading-bar');
+    if(bar) bar.classList.remove('active');
+  }
+}
+function showToast(message, isError){
+  const container = document.getElementById('toast-container');
+  if(!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast'+(isError?' toast-error':'');
+  el.textContent = message;
+  container.appendChild(el);
+  requestAnimationFrame(()=>el.classList.add('show'));
+  setTimeout(()=>{
+    el.classList.remove('show');
+    setTimeout(()=>el.remove(), 250);
+  }, 2400);
+}
+
 function escapeHtml(s){
   if(s==null) return '';
   return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -799,6 +886,7 @@ async function loadAllData(){
     startDate: t.start_date || '',
     endDate: t.end_date || '',
     pax: t.pax || 1,
+    budget: t.budget!=null ? Number(t.budget) : null,
     dayTitles: t.day_titles || {},
     items: activityRows.filter(a=>a.trip_id===t.id).map(a=>dbActivityToItem(a, fileRows)),
     tasks: taskRows.filter(tk=>tk.trip_id===t.id).map(tk=>({ id: tk.id, text: tk.text, done: tk.done })),
@@ -989,7 +1077,31 @@ function afterRender(){
     initTripMap(lastTripDetailTrip, [], (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
   renderCountdownStrip();
+  syncDayNavSticky();
 }
+// Moves the day filter forward/back by one and re-renders — the arrows next to the day
+// dropdown. Disabled (see renderTripDetail) at either end of the trip or while "All Days"
+// is selected, since "next" from "All Days" is ambiguous.
+function shiftDay(delta){
+  if(ui.dayFilter==='all') return;
+  const trip = getTrip(ui.detailTripId);
+  if(!trip) return;
+  const numDays = tripDays(trip);
+  let next = Number(ui.dayFilter) + delta;
+  next = Math.max(0, Math.min(numDays-1, next));
+  ui.dayFilter = String(next);
+  render();
+}
+// The day-nav-bar sticks just below the header, but the header's own height varies
+// (the "what's next" countdown strip shows/hides), so its sticky offset is computed from
+// the live header height instead of being a fixed CSS value.
+function syncDayNavSticky(){
+  const bar = document.getElementById('day-nav-bar');
+  const header = document.querySelector('header.topbar');
+  if(!bar || !header) return;
+  requestAnimationFrame(()=>{ bar.style.top = header.getBoundingClientRect().height + 'px'; });
+}
+window.addEventListener('resize', ()=>{ if(ui.view==='tripDetail') syncDayNavSticky(); });
 
 /* ---- "What's next" countdown strip (lives in the header, outside #app, so it's visible
    on every page without needing to open anything) ---- */
@@ -1318,6 +1430,7 @@ function renderHome(){
       </select>
     </div>
     ${renderCurrencyConverterCard()}
+    ${renderBudgetCard(trip)}
     <div class="home-grid">
       ${renderCountdownCard(trip)}
       ${renderOverviewCard(trip)}
@@ -1333,6 +1446,27 @@ function renderHome(){
   `;
 }
 
+// "Spent so far" combines booked activity costs (the itinerary's own cost fields) and the
+// separate ad-hoc Trip Expenses log — the two things that together represent real spend —
+// against an optional target budget set on the trip, so there's a one-glance answer to
+// "how are we doing" without opening either Expenses view.
+function renderBudgetCard(trip){
+  const activityCost = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+(Number(i.costTotal)||0),0);
+  const expensesCost = (trip.expenses||[]).reduce((s,e)=>s+(Number(e.amount)||0),0);
+  const spent = activityCost + expensesCost;
+  const hasBudget = trip.budget!=null && trip.budget>0;
+  const pct = hasBudget ? Math.min(100, Math.round((spent/trip.budget)*100)) : 0;
+  const over = hasBudget && spent > trip.budget;
+  return `
+    <div class="card" onclick="openTripExpenses('${trip.id}')" style="cursor:pointer;">
+      <div class="section-title">Budget</div>
+      <div class="budget-row">
+        <div class="budget-spent">${fmtCost(spent)}</div>
+        ${hasBudget? `<div class="budget-target">of ${fmtCost(trip.budget)} ${over?'— over budget':'budget'}</div>` : `<div class="budget-target">spent so far · <a href="#" onclick="event.stopPropagation();event.preventDefault();openAddTripModal('${trip.id}')" style="color:var(--primary-dark);font-weight:600;">set a budget</a></div>`}
+      </div>
+      ${hasBudget? `<div class="budget-track"><div class="budget-fill ${over?'over':''}" style="width:${pct}%;"></div></div>` : ''}
+    </div>`;
+}
 function renderCountdownCard(trip){
   const t = todayStr();
   let num='', sub='';
@@ -1598,9 +1732,15 @@ function openAddTripModal(editId){
         <input type="date" id="trip-end-input" value="${trip?trip.endDate||'':''}">
       </div>
     </div>
-    <div class="field">
-      <label class="field-label">Number of Pax</label>
-      <input type="number" min="1" step="1" id="trip-pax-input" value="${trip&&trip.pax?trip.pax:1}">
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label">Number of Pax</label>
+        <input type="number" min="1" step="1" id="trip-pax-input" value="${trip&&trip.pax?trip.pax:1}">
+      </div>
+      <div class="field">
+        <label class="field-label">Budget (optional)</label>
+        <input type="number" min="0" step="0.01" id="trip-budget-input" value="${trip&&trip.budget?trip.budget:''}" placeholder="e.g. 3000">
+      </div>
     </div>
     <div class="modal-footer">
       ${trip? `<button class="btn" style="margin-right:auto;color:var(--danger);" onclick="deleteTripConfirm('${trip.id}')">Delete Trip</button>` : ''}
@@ -1633,20 +1773,28 @@ async function saveTrip(editId){
   const startDate = document.getElementById('trip-start-input').value;
   const endDate = document.getElementById('trip-end-input').value;
   const pax = Math.max(1, parseInt(document.getElementById('trip-pax-input').value) || 1);
+  const budgetRaw = document.getElementById('trip-budget-input').value;
+  const budget = budgetRaw!=='' ? Math.max(0, parseFloat(budgetRaw)||0) : null;
   if(!name){ alert('Please enter a trip name.'); return; }
   if(startDate && endDate && endDate < startDate){ alert('End date must be after start date.'); return; }
-  const payload = { name, countries: [...tempCountries], start_date: startDate || null, end_date: endDate || null, pax };
-  if(editId){
-    const { data: row, error } = await sb.from('trips').update(payload).eq('id', editId).select().single();
-    if(error){ alert('Could not save trip: '+error.message); return; }
-    const trip = getTrip(editId);
-    Object.assign(trip, { name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax });
-  } else {
-    const { data: row, error } = await sb.from('trips').insert(payload).select().single();
-    if(error){ alert('Could not create trip: '+error.message); return; }
-    data.trips.push({ id: row.id, name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax, items:[], tasks:[] });
+  const payload = { name, countries: [...tempCountries], start_date: startDate || null, end_date: endDate || null, pax, budget };
+  beginLoading();
+  try{
+    if(editId){
+      const { data: row, error } = await sb.from('trips').update(payload).eq('id', editId).select().single();
+      if(error){ alert('Could not save trip: '+error.message); return; }
+      const trip = getTrip(editId);
+      Object.assign(trip, { name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax, budget: row.budget });
+    } else {
+      const { data: row, error } = await sb.from('trips').insert(payload).select().single();
+      if(error){ alert('Could not create trip: '+error.message); return; }
+      data.trips.push({ id: row.id, name: row.name, countries: row.countries||[], startDate: row.start_date||'', endDate: row.end_date||'', pax: row.pax, budget: row.budget, items:[], tasks:[], expenses:[] });
+    }
+    closeModal(); render();
+    showToast('Trip saved');
+  } finally {
+    endLoading();
   }
-  closeModal(); render();
 }
 function deleteTripConfirm(tripId){
   const trip = getTrip(tripId);
@@ -1662,13 +1810,19 @@ function deleteTripConfirm(tripId){
 async function deleteTrip(tripId){
   const trip = getTrip(tripId);
   const storagePaths = (trip.items||[]).flatMap(i=>(i.files||[]).map(f=>f.storagePath));
-  const { error } = await sb.from('trips').delete().eq('id', tripId);
-  if(error){ alert('Could not delete trip: '+error.message); return; }
-  if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
-  data.trips = data.trips.filter(t=>t.id!==tripId);
-  closeModal();
-  ui.view='trips';
-  render();
+  beginLoading();
+  try{
+    const { error } = await sb.from('trips').delete().eq('id', tripId);
+    if(error){ alert('Could not delete trip: '+error.message); return; }
+    if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
+    data.trips = data.trips.filter(t=>t.id!==tripId);
+    closeModal();
+    ui.view='trips';
+    render();
+    showToast('Trip deleted');
+  } finally {
+    endLoading();
+  }
 }
 
 /* ============ TRIP DETAIL ============ */
@@ -1734,7 +1888,8 @@ function renderTripDetail(){
       <div class="muted-note" id="trip-map-status" style="margin-top:8px;"></div>
     </div>` : ''}
 
-    <div class="filter-bar">
+    <div class="filter-bar day-nav-bar" id="day-nav-bar">
+      <button class="day-nav-btn" onclick="shiftDay(-1)" ${(ui.dayFilter==='all'||Number(ui.dayFilter)<=0)?'disabled':''} aria-label="Previous day" title="Previous day">&lsaquo;</button>
       <select class="filter-select" onchange="ui.dayFilter=this.value;render();">
         <option value="all" ${ui.dayFilter==='all'?'selected':''}>All Days</option>
         ${Array.from({length:numDays}).map((_,i)=>{
@@ -1742,6 +1897,7 @@ function renderTripDetail(){
           return `<option value="${i}" ${ui.dayFilter===String(i)?'selected':''}>${label}</option>`;
         }).join('')}
       </select>
+      <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter==='all'||Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
     </div>
     <div class="filter-bar">
       <select class="filter-select" onchange="ui.typeFilter=this.value;render();">
@@ -1973,9 +2129,19 @@ function toggleItemPopover(e, itemId, tripId){
   const existing = card.querySelector('.popover');
   closePopovers();
   if(existing) return;
+  // The drag-handle (⠿) only reorders via HTML5 drag-and-drop, which mouse-only — there's
+  // no touch equivalent, so it silently doesn't work on a phone. These "Reorder" buttons
+  // give touch users the same reordering ability via a tap instead of a drag gesture.
+  const group = card.closest('.drag-group');
+  const siblingIds = group ? [...group.querySelectorAll('.item-card')].map(c=>c.id.replace('item-','')) : [];
+  const idx = siblingIds.indexOf(itemId);
+  const canUp = idx > 0;
+  const canDown = idx !== -1 && idx < siblingIds.length-1;
   const pop = document.createElement('div');
   pop.className='popover';
   pop.innerHTML = `
+    ${canUp? `<button onclick="closePopovers();moveItemPosition('${tripId}','${itemId}',-1)">⬆️ Reorder Up</button>` : ''}
+    ${canDown? `<button onclick="closePopovers();moveItemPosition('${tripId}','${itemId}',1)">⬇️ Reorder Down</button>` : ''}
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
     <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
     <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
@@ -1983,6 +2149,34 @@ function toggleItemPopover(e, itemId, tripId){
   `;
   pop.addEventListener('click', e2=>e2.stopPropagation()); // keep clicks inside from also opening the card's detail popup
   card.appendChild(pop);
+}
+async function moveItemPosition(tripId, itemId, dir){
+  const card = document.getElementById('item-'+itemId);
+  const group = card && card.closest('.drag-group');
+  if(!group) return;
+  const ids = [...group.querySelectorAll('.item-card')].map(c=>c.id.replace('item-',''));
+  const fromIdx = ids.indexOf(itemId);
+  const toIdx = fromIdx + dir;
+  if(fromIdx===-1 || toIdx<0 || toIdx>=ids.length) return;
+  ids.splice(fromIdx,1);
+  ids.splice(toIdx,0,itemId);
+  const trip = getTrip(tripId);
+  const updates = [];
+  ids.forEach((id, idx)=>{
+    const it = trip.items.find(i=>i.id===id);
+    if(it && it.order!==idx){
+      it.order = idx;
+      updates.push(sb.from('activities').update({ sort_order: idx }).eq('id', id));
+    }
+  });
+  render(); // optimistic — reflect the new order immediately
+  beginLoading();
+  try{
+    if(updates.length) await Promise.all(updates);
+    showToast('Order updated');
+  } finally {
+    endLoading();
+  }
 }
 function showDeleteItemConfirm(e, itemId, tripId){
   const card = e.target.closest('.item-card');
@@ -2009,6 +2203,8 @@ async function deleteItem(tripId, itemId){
     if(it.iconImagePath) paths.push(it.iconImagePath);
     return paths;
   });
+  beginLoading();
+  try{
   // Explicitly remove continuation duplicates too (belt-and-braces alongside the DB's own cascade).
   if(children.length){
     await sb.from('activities').delete().in('id', children.map(c=>c.id));
@@ -2018,6 +2214,10 @@ async function deleteItem(tripId, itemId){
   if(storagePaths.length) await sb.storage.from('attachments').remove(storagePaths).catch(()=>{});
   trip.items = trip.items.filter(i=>i.id!==itemId && i.parentActivityId!==itemId);
   render();
+  showToast('Activity deleted');
+  } finally {
+    endLoading();
+  }
 }
 async function duplicateItem(tripId, itemId){
   const trip = getTrip(tripId);
@@ -2034,11 +2234,17 @@ async function duplicateItem(tripId, itemId){
     card_color: item.cardColor || null, notes: item.notes || '', sort_order: newOrder,
     is_duplicate: false, parent_activity_id: null, is_poi: item.isPoi || false,
   };
-  const { data: row, error } = await sb.from('activities').insert(payload).select().single();
-  if(error){ alert('Could not duplicate activity: '+error.message); return; }
-  trip.items.push(dbActivityToItem(row, []));
-  await reconcileDuplicates(tripId, row.id, payload, newOrder);
-  render();
+  beginLoading();
+  try{
+    const { data: row, error } = await sb.from('activities').insert(payload).select().single();
+    if(error){ alert('Could not duplicate activity: '+error.message); return; }
+    trip.items.push(dbActivityToItem(row, []));
+    await reconcileDuplicates(tripId, row.id, payload, newOrder);
+    render();
+    showToast('Activity duplicated');
+  } finally {
+    endLoading();
+  }
 }
 /* Keeps auto-generated multi-day "continuation" rows in sync with a parent activity's
    date range, without touching any continuation rows the user has independently edited. */
@@ -2106,18 +2312,24 @@ async function moveItemToDate(tripId, itemId){
     const span = daysBetween(item.dateStart, item.dateEnd);
     newEnd = addDays(newStart, span);
   }
-  const { error } = await sb.from('activities').update({ date_start: newStart, date_end: newEnd }).eq('id', itemId);
-  if(error){ alert('Could not move activity: '+error.message); return; }
-  item.dateStart = newStart;
-  item.dateEnd = newEnd;
-  await reconcileDuplicates(tripId, itemId, {
-    type: item.type, icon: item.icon||null, icon_image_path: item.iconImagePath||null, status: item.status, booked_by: item.bookedBy||null,
-    name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
-    date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
-    card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
-  }, item.order||0);
-  closeModal();
-  render();
+  beginLoading();
+  try{
+    const { error } = await sb.from('activities').update({ date_start: newStart, date_end: newEnd }).eq('id', itemId);
+    if(error){ alert('Could not move activity: '+error.message); return; }
+    item.dateStart = newStart;
+    item.dateEnd = newEnd;
+    await reconcileDuplicates(tripId, itemId, {
+      type: item.type, icon: item.icon||null, icon_image_path: item.iconImagePath||null, status: item.status, booked_by: item.bookedBy||null,
+      name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
+      date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
+      card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
+    }, item.order||0);
+    closeModal();
+    render();
+    showToast('Activity moved');
+  } finally {
+    endLoading();
+  }
 }
 document.addEventListener('click', (e)=>{
   if(!e.target.closest('.popover') && !e.target.closest('.item-edit-btn')) closePopovers();
@@ -2291,12 +2503,17 @@ async function handleCoverSelect(e){
   const files = Array.from(e.target.files);
   e.target.value = '';
   if(!files.length) return;
-  for(const file of files){
-    const path = `shared/${currentDraftId}/cover_${Date.now()}_${sanitizeFileName(file.name)}`;
-    const { error } = await sb.storage.from('attachments').upload(path, file);
-    if(error){ alert('Image upload failed for '+file.name+': '+error.message); continue; }
-    tempCoverPaths.push(path);
-    renderCoverPreview();
+  beginLoading();
+  try{
+    for(const file of files){
+      const path = `shared/${currentDraftId}/cover_${Date.now()}_${sanitizeFileName(file.name)}`;
+      const { error } = await sb.storage.from('attachments').upload(path, file);
+      if(error){ alert('Image upload failed for '+file.name+': '+error.message); continue; }
+      tempCoverPaths.push(path);
+      renderCoverPreview();
+    }
+  } finally {
+    endLoading();
   }
 }
 function removeCoverImage(idx){
@@ -2323,11 +2540,16 @@ async function handleIconUpload(e){
   const file = e.target.files[0];
   e.target.value = '';
   if(!file) return;
-  const path = `shared/${currentDraftId}/icon_${Date.now()}_${sanitizeFileName(file.name)}`;
-  const { error } = await sb.storage.from('attachments').upload(path, file);
-  if(error){ alert('Icon upload failed: '+error.message); return; }
-  tempIconImagePath = path;
-  refreshIconField();
+  beginLoading();
+  try{
+    const path = `shared/${currentDraftId}/icon_${Date.now()}_${sanitizeFileName(file.name)}`;
+    const { error } = await sb.storage.from('attachments').upload(path, file);
+    if(error){ alert('Icon upload failed: '+error.message); return; }
+    tempIconImagePath = path;
+    refreshIconField();
+  } finally {
+    endLoading();
+  }
 }
 function removeCustomIcon(){
   tempIconImagePath = null;
@@ -2451,53 +2673,59 @@ async function saveItem(tripId, itemId){
 
   let savedId = itemId;
   let savedOrder;
-  if(itemId){
-    const { error } = await sb.from('activities').update(payload).eq('id', itemId);
-    if(error){ alert('Could not save activity: '+error.message); return; }
-    savedOrder = trip.items.find(i=>i.id===itemId).order;
-  } else {
-    savedOrder = trip.items.reduce((m,i)=>Math.max(m,i.order||0),-1)+1;
-    const { data: row, error } = await sb.from('activities').insert({ ...payload, trip_id: tripId, sort_order: savedOrder }).select().single();
-    if(error){ alert('Could not create activity: '+error.message); return; }
-    savedId = row.id;
-    // link any files that were uploaded before this activity row existed
-    for(const f of tempFiles.filter(f=>f.pending)){
-      const { data: fr, error: fe } = await sb.from('activity_files')
-        .insert({ activity_id: savedId, file_name: f.name, storage_path: f.storagePath }).select().single();
-      if(!fe){ f.id = fr.id; f.pending = false; }
+  beginLoading();
+  try{
+    if(itemId){
+      const { error } = await sb.from('activities').update(payload).eq('id', itemId);
+      if(error){ alert('Could not save activity: '+error.message); return; }
+      savedOrder = trip.items.find(i=>i.id===itemId).order;
+    } else {
+      savedOrder = trip.items.reduce((m,i)=>Math.max(m,i.order||0),-1)+1;
+      const { data: row, error } = await sb.from('activities').insert({ ...payload, trip_id: tripId, sort_order: savedOrder }).select().single();
+      if(error){ alert('Could not create activity: '+error.message); return; }
+      savedId = row.id;
+      // link any files that were uploaded before this activity row existed
+      for(const f of tempFiles.filter(f=>f.pending)){
+        const { data: fr, error: fe } = await sb.from('activity_files')
+          .insert({ activity_id: savedId, file_name: f.name, storage_path: f.storagePath }).select().single();
+        if(!fe){ f.id = fr.id; f.pending = false; }
+      }
     }
-  }
 
-  const localItem = {
-    id: savedId,
-    type: payload.type, icon: payload.icon || '', status: payload.status, bookedBy: payload.booked_by || '',
-    name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
-    dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
-    timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
-    link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
-    imagePaths: payload.image_paths || [],
-    iconImagePath: payload.icon_image_path || null,
-    lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
-    lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
-    isDuplicate: existingItem ? existingItem.isDuplicate : false,
-    isPoi: payload.is_poi,
-    parentActivityId: existingItem ? existingItem.parentActivityId : null,
-    notes: payload.notes, order: savedOrder,
-    files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
-  };
-  if(removedCoverPaths.length){
-    sb.storage.from('attachments').remove(removedCoverPaths).catch(()=>{});
+    const localItem = {
+      id: savedId,
+      type: payload.type, icon: payload.icon || '', status: payload.status, bookedBy: payload.booked_by || '',
+      name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
+      dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
+      timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
+      link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
+      imagePaths: payload.image_paths || [],
+      iconImagePath: payload.icon_image_path || null,
+      lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
+      lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
+      isDuplicate: existingItem ? existingItem.isDuplicate : false,
+      isPoi: payload.is_poi,
+      parentActivityId: existingItem ? existingItem.parentActivityId : null,
+      notes: payload.notes, order: savedOrder,
+      files: tempFiles.map(f=>({ id: f.id, name: f.name, storagePath: f.storagePath })),
+    };
+    if(removedCoverPaths.length){
+      sb.storage.from('attachments').remove(removedCoverPaths).catch(()=>{});
+    }
+    if(itemId){
+      Object.assign(trip.items.find(i=>i.id===itemId), localItem);
+    } else {
+      trip.items = trip.items||[];
+      trip.items.push(localItem);
+    }
+    if(!isEditingDuplicate){
+      await reconcileDuplicates(tripId, savedId, payload, savedOrder);
+    }
+    closeModal(); render();
+    showToast('Activity saved');
+  } finally {
+    endLoading();
   }
-  if(itemId){
-    Object.assign(trip.items.find(i=>i.id===itemId), localItem);
-  } else {
-    trip.items = trip.items||[];
-    trip.items.push(localItem);
-  }
-  if(!isEditingDuplicate){
-    await reconcileDuplicates(tripId, savedId, payload, savedOrder);
-  }
-  closeModal(); render();
 }
 
 /* ============ TRIP EXPENSES (quick daily spending log) ============
@@ -2665,11 +2893,16 @@ function refreshExpenseReceiptField(){
 async function handleReceiptUpload(e){
   const file = e.target.files[0]; e.target.value = '';
   if(!file) return;
+  beginLoading();
+  try{
   const path = `shared/expenses/receipt_${Date.now()}_${sanitizeFileName(file.name)}`;
   const { error } = await sb.storage.from('attachments').upload(path, file);
   if(error){ alert('Receipt upload failed: '+error.message); return; }
   tempReceiptPath = path;
   refreshExpenseReceiptField();
+  } finally {
+    endLoading();
+  }
 }
 function removeExpenseReceipt(){
   tempReceiptPath = null;
@@ -2701,31 +2934,44 @@ async function saveExpense(tripId){
   const paidBy = document.getElementById('expense-paidby-input').value || null;
   const note = document.getElementById('expense-note-input').value.trim() || null;
   const payload = { trip_id: tripId, amount, category, date, paid_by: paidBy, note, receipt_path: tempReceiptPath || null };
-  if(editingExpenseId){
-    const { data: row, error } = await sb.from('expenses').update(payload).eq('id', editingExpenseId).select().single();
-    if(error){ alert('Could not update expense: '+error.message); return; }
-    const idx = (trip.expenses||[]).findIndex(e=>e.id===editingExpenseId);
-    if(idx>-1) trip.expenses[idx] = dbExpenseToItem(row);
-    editingExpenseId = null;
-    tempReceiptPath = null;
-    renderTripExpensesModal(tripId);
-  } else {
-    const { data: row, error } = await sb.from('expenses').insert(payload).select().single();
-    if(error){ alert('Could not log expense: '+error.message); return; }
-    trip.expenses = trip.expenses || [];
-    trip.expenses.push(dbExpenseToItem(row));
-    tempReceiptPath = null;
-    renderTripExpensesModal(tripId);
+  beginLoading();
+  try{
+    if(editingExpenseId){
+      const { data: row, error } = await sb.from('expenses').update(payload).eq('id', editingExpenseId).select().single();
+      if(error){ alert('Could not update expense: '+error.message); return; }
+      const idx = (trip.expenses||[]).findIndex(e=>e.id===editingExpenseId);
+      if(idx>-1) trip.expenses[idx] = dbExpenseToItem(row);
+      editingExpenseId = null;
+      tempReceiptPath = null;
+      renderTripExpensesModal(tripId);
+      showToast('Expense updated');
+    } else {
+      const { data: row, error } = await sb.from('expenses').insert(payload).select().single();
+      if(error){ alert('Could not log expense: '+error.message); return; }
+      trip.expenses = trip.expenses || [];
+      trip.expenses.push(dbExpenseToItem(row));
+      tempReceiptPath = null;
+      renderTripExpensesModal(tripId);
+      showToast('Expense logged');
+    }
+  } finally {
+    endLoading();
   }
 }
 async function deleteExpense(tripId, expenseId){
   const trip = getTrip(tripId);
   if(!trip) return;
   const exp = (trip.expenses||[]).find(e=>e.id===expenseId);
-  try{ await sb.from('expenses').delete().eq('id', expenseId); }catch(e){}
-  if(exp && exp.receiptPath){ try{ await sb.storage.from('attachments').remove([exp.receiptPath]); }catch(e){} }
-  trip.expenses = (trip.expenses||[]).filter(e=>e.id!==expenseId);
-  if(editingExpenseId===expenseId){ editingExpenseId=null; tempReceiptPath=null; }
+  beginLoading();
+  try{
+    try{ await sb.from('expenses').delete().eq('id', expenseId); }catch(e){}
+    if(exp && exp.receiptPath){ try{ await sb.storage.from('attachments').remove([exp.receiptPath]); }catch(e){} }
+    trip.expenses = (trip.expenses||[]).filter(e=>e.id!==expenseId);
+    if(editingExpenseId===expenseId){ editingExpenseId=null; tempReceiptPath=null; }
+    showToast('Expense deleted');
+  } finally {
+    endLoading();
+  }
   renderTripExpensesModal(tripId);
 }
 
