@@ -1134,11 +1134,98 @@ function showNavMethodsPopover(e, fromLat, fromLng, toLat, toLng){
   const pop = document.createElement('div');
   pop.className = 'popover';
   pop.innerHTML = `
-    <button onclick="event.stopPropagation();window.open('${googleMapsDirectionsUrlBetween(fromLat,fromLng,toLat,toLng,'walking')}','_blank');closePopovers();">🚶 Walking directions</button>
-    <button onclick="event.stopPropagation();window.open('${googleMapsDirectionsUrlBetween(fromLat,fromLng,toLat,toLng,'transit')}','_blank');closePopovers();">🚆 Transit directions</button>
+    <button onclick="event.stopPropagation();showNavRoute(${fromLat},${fromLng},${toLat},${toLng},'walking');">🚶 Walking directions</button>
+    <button onclick="event.stopPropagation();showNavRoute(${fromLat},${fromLng},${toLat},${toLng},'transit');">🚆 Transit directions</button>
   `;
   pop.addEventListener('click', e2=>e2.stopPropagation());
   badge.appendChild(pop);
+}
+function isMobileDevice(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+// Same Routes API call the badges use, but also requesting the route's encoded polyline
+// so it can actually be drawn on the overlay map (the badge-only version skips this field
+// to keep those calls a little lighter).
+async function computeRouteWithPolyline(originLat, originLng, destLat, destLng, mode){
+  try {
+    const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline',
+      },
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
+        destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
+        travelMode: mode,
+      }),
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const route = data.routes && data.routes[0];
+    if(!route) return null;
+    return {
+      seconds: parseInt(route.duration, 10) || 0,
+      meters: route.distanceMeters || 0,
+      encodedPolyline: route.polyline && route.polyline.encodedPolyline,
+    };
+  } catch(e){
+    return null;
+  }
+}
+// On a phone/tablet, jump straight into the native Google Maps app (location.href on the
+// same universal link Google Maps already understands is what reliably triggers the app,
+// where window.open tends to just open a browser tab instead). On desktop, where there's
+// no Maps app to hand off to, show the route as an on-screen overlay instead of leaving
+// the page.
+async function showNavRoute(fromLat, fromLng, toLat, toLng, mode){
+  closePopovers();
+  const gmapsUrl = googleMapsDirectionsUrlBetween(fromLat, fromLng, toLat, toLng, mode);
+  if(isMobileDevice()){
+    window.location.href = gmapsUrl;
+    return;
+  }
+  const modeLabel = mode==='transit' ? '🚆 Transit' : '🚶 Walking';
+  openModal(`
+    <div class="modal-header"><h3>${modeLabel} directions</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div id="route-overlay-map" style="height:340px;border-radius:12px;overflow:hidden;background:var(--bg-soft);"></div>
+    <div class="muted-note" id="route-overlay-status" style="margin-top:10px;">Loading route…</div>
+    <div class="modal-footer">
+      <a class="btn" href="${gmapsUrl}" target="_blank" rel="noopener">Open in Google Maps ↗</a>
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  `, true);
+
+  const leg = await computeRouteWithPolyline(fromLat, fromLng, toLat, toLng, mode==='transit' ? 'TRANSIT' : 'WALK');
+  const mapEl = document.getElementById('route-overlay-map');
+  if(!mapEl) return; // modal was closed before this resolved
+  const statusEl = document.getElementById('route-overlay-status');
+  if(!leg){
+    if(statusEl) statusEl.textContent = 'Could not load this route — try "Open in Google Maps" instead.';
+    return;
+  }
+  if(statusEl) statusEl.textContent = `${formatRouteDuration(leg.seconds)} · ${formatDistance(leg.meters)}`;
+
+  let googleMaps;
+  try { googleMaps = await loadGoogleMaps(); } catch(e){ return; }
+  if(document.getElementById('route-overlay-map') !== mapEl) return; // modal changed underneath us
+
+  const map = new googleMaps.Map(mapEl, {
+    gestureHandling:'greedy', zoomControl:true, streetViewControl:false,
+    mapTypeControl:false, fullscreenControl:false, mapId:'DEMO_MAP_ID',
+  });
+  const bounds = new googleMaps.LatLngBounds();
+  new googleMaps.marker.AdvancedMarkerElement({ map, position:{ lat:fromLat, lng:fromLng } });
+  new googleMaps.marker.AdvancedMarkerElement({ map, position:{ lat:toLat, lng:toLng } });
+  bounds.extend({ lat:fromLat, lng:fromLng });
+  bounds.extend({ lat:toLat, lng:toLng });
+  if(leg.encodedPolyline && googleMaps.geometry){
+    const path = googleMaps.geometry.encoding.decodePath(leg.encodedPolyline);
+    new googleMaps.Polyline({ path, map, strokeColor:'#2f6f5e', strokeWeight:4, strokeOpacity:0.9 });
+    path.forEach(p=>bounds.extend(p));
+  }
+  map.fitBounds(bounds, 40);
 }
 
 /* ---- Nearby activities ---- */
@@ -1414,7 +1501,7 @@ function loadGoogleMaps(){
     if(window.google && window.google.maps){ resolve(window.google.maps); return; }
     window.__onGoogleMapsLoaded = ()=> resolve(window.google.maps);
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker&loading=async&callback=__onGoogleMapsLoaded`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,geometry&loading=async&callback=__onGoogleMapsLoaded`;
     script.async = true;
     script.onerror = ()=> reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
