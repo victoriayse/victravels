@@ -434,7 +434,13 @@
   .file-chip-name:hover{text-decoration:underline;}
   .file-pill{
     display:inline-flex;align-items:center;gap:4px;background:var(--bg-soft);border-radius:999px;padding:3px 10px 3px 8px;
-    cursor:pointer;max-width:170px;border:1px solid var(--border);flex-shrink:0;
+    cursor:pointer;max-width:170px;border:1px solid var(--border);
+    /* flex-shrink:0 here (as it used to be) refuses to let the pill shrink even when its
+       row is narrower than 170px — e.g. on a mobile card squeezed by the fixed-width cover
+       image next to it — so the pill overflows its own column and ends up visually hidden
+       behind that image (which paints later in the DOM). min-width:0 + the default
+       flex-shrink:1 let it shrink and ellipsis-truncate instead of overflowing. */
+    flex-shrink:1;min-width:0;
   }
   .file-pill:hover{background:var(--primary-light);color:var(--primary-dark);border-color:transparent;}
   .file-pill-icon{flex-shrink:0;font-size:11px;}
@@ -2770,12 +2776,17 @@ function renderFileChips(){
 async function removeTempFile(idx){
   const f = tempFiles[idx];
   if(f && f.storagePath){
-    await sb.storage.from('attachments').remove([f.storagePath]).catch(()=>{});
+    try{ await sb.storage.from('attachments').remove([f.storagePath]); }catch(e){}
     // Note: Supabase's Postgrest query builder only implements .then(), not .catch(),
     // so chaining .catch() directly on it throws a TypeError — must use try/catch instead.
-    if(f.id){
-      try{ await sb.from('activity_files').delete().eq('id', f.id); }catch(e){}
-    }
+    // Prefer deleting by id, but fall back to matching on storage_path when it's missing —
+    // without this fallback, a file removed here would delete the storage object but leave
+    // its activity_files row behind, orphaned and permanently un-openable from then on
+    // (this is how a past bug left a few "Could not open file" attachments on some cards).
+    try{
+      if(f.id) await sb.from('activity_files').delete().eq('id', f.id);
+      else if(currentEditingItemId) await sb.from('activity_files').delete().eq('activity_id', currentEditingItemId).eq('storage_path', f.storagePath);
+    }catch(e){ console.error('Could not remove file record for', f.storagePath, e); }
   }
   tempFiles.splice(idx,1);
   renderFileChips();
@@ -3358,7 +3369,26 @@ async function openFilePreviewFor(tripId, itemId, idx){
   const f = item && item.files && item.files[idx];
   if(!f) return;
   const { data, error } = await sb.storage.from('attachments').createSignedUrl(f.storagePath, 3600);
-  if(error){ alert('Could not open file: '+error.message); return; }
+  if(error){
+    // The DB still has this attachment linked, but the underlying file is gone from
+    // storage (e.g. left behind by a past removal that deleted the object but not this
+    // reference). Rather than a dead-end error every time, offer to clear the broken link.
+    const shouldRemove = confirm(`Could not open "${f.name}" — the file seems to be missing.\n\nRemove this broken attachment from the activity?`);
+    if(shouldRemove){
+      beginLoading();
+      try{
+        await sb.from('activity_files').delete().eq('id', f.id);
+        item.files = item.files.filter(x=>x.id!==f.id);
+        render();
+        showToast('Removed broken attachment');
+      }catch(e){
+        alert('Could not remove the broken attachment: '+(e.message||e));
+      } finally {
+        endLoading();
+      }
+    }
+    return;
+  }
   openFilePreview(data.signedUrl, f.name);
 }
 async function openFilePreviewByTemp(idx){
