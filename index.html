@@ -221,6 +221,13 @@
   .flight-name{font-weight:600;font-size:13.5px;}
   .flight-meta{font-size:12px;color:var(--text-muted);margin-top:1px;}
   .expenses-total{font-family:var(--font-serif);font-size:28px;font-weight:600;margin-top:8px;}
+  /* "Nearby" / "Nearest Toilets" modal lists */
+  .nearby-list{max-height:60vh;overflow-y:auto;}
+  .nearby-row{
+    display:flex;align-items:center;gap:12px;padding:11px 2px;border-bottom:1px solid var(--border);
+    cursor:pointer;
+  }
+  .nearby-row:last-child{border-bottom:none;}
   .expense-day-header{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;margin:0 2px 8px;}
   .expense-row:hover{box-shadow:var(--shadow-hover);}
   .task-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
@@ -1025,6 +1032,165 @@ async function geocodePlace(query){
   }catch(e){}
   return null;
 }
+
+/* ============ LOCATION: "Nearby" + "Nearest Toilet" ============
+   Both features are free — no API key, no billing. "Nearby" reuses lat/lng the app has
+   already geocoded for each activity; "Nearest Toilet" queries OpenStreetMap's free,
+   crowdsourced amenity=toilets tag via the public Overpass API. Both use the browser's
+   built-in Geolocation API for "where am I", which also costs nothing and needs no key —
+   just a one-time permission prompt (requires HTTPS, which GitHub Pages already is). */
+function getCurrentPosition(){
+  return new Promise((resolve, reject)=>{
+    if(!navigator.geolocation){ reject(new Error('Geolocation is not supported on this device/browser.')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      err => {
+        let msg = 'Could not get your location.';
+        if(err.code===1) msg = 'Location permission was denied. Allow location access in your browser settings to use this.';
+        else if(err.code===2) msg = 'Your location is currently unavailable.';
+        else if(err.code===3) msg = 'Getting your location took too long. Please try again.';
+        reject(new Error(msg));
+      },
+      { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
+    );
+  });
+}
+// Great-circle distance between two lat/lng points, in meters (haversine formula).
+function haversineMeters(lat1, lng1, lat2, lng2){
+  const R = 6371000;
+  const toRad = d => d * Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function formatDistance(meters){
+  if(meters < 1000) return Math.round(meters) + ' m';
+  return (meters/1000).toFixed(1) + ' km';
+}
+// A plain Google Maps URL (no API key required — this is just a link, not an API call) that
+// opens turn-by-turn directions in the Google Maps app on mobile, or maps.google.com on
+// desktop, from wherever the user currently is to the given point.
+function googleMapsDirectionsUrl(lat, lng){
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=walking`;
+}
+
+/* ---- Nearby activities ---- */
+function openNearbyModal(tripId){
+  openModal(`
+    <div class="modal-header"><h3>📍 Nearby</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Finding your location…</p>
+  `);
+  getCurrentPosition().then(pos=>{
+    renderNearbyModal(tripId, pos);
+  }).catch(err=>{
+    openModal(`
+      <div class="modal-header"><h3>📍 Nearby</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+      <p class="muted-note" style="margin-top:0;">${escapeHtml(err.message)}</p>
+    `);
+  });
+}
+function renderNearbyModal(tripId, pos){
+  const trip = getTrip(tripId);
+  if(!trip){ closeModal(); return; }
+  // Both booked itinerary items and unscheduled Places of Interest are worth surfacing here —
+  // anything with a real pin, minus the auto-generated multi-day continuation duplicates
+  // (which would otherwise show the same place several times).
+  const candidates = (trip.items||[]).filter(i=>!i.isDuplicate && i.lat!=null && i.lng!=null);
+  const withDist = candidates.map(item=>({ item, dist: haversineMeters(pos.lat, pos.lng, item.lat, item.lng) }));
+  withDist.sort((a,b)=>a.dist-b.dist);
+  const html = `
+    <div class="modal-header"><h3>📍 Nearby</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    ${withDist.length===0 ? `<p class="muted-note" style="margin-top:0;">No pinned activities or places of interest yet — add a Google Maps link to an activity so it can be geocoded.</p>` : `
+    <div class="nearby-list">
+      ${withDist.map(({item,dist})=>`
+        <div class="nearby-row" onclick="closeModal();openItemDetailModal('${trip.id}','${item.id}')">
+          <div class="item-type-badge" style="flex-shrink:0;">${iconGlyphHtml(item, 18)}</div>
+          <div style="flex:1;min-width:0;">
+            <div class="item-name" style="white-space:normal;">${escapeHtml(item.name||'Untitled')}${item.isPoi?' <span class="overview-chip" style="margin:0;">POI</span>':''}</div>
+            <div class="item-meta"><span>${formatDistance(dist)} away</span></div>
+          </div>
+          <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate</a>
+        </div>`).join('')}
+    </div>`}
+  `;
+  openModal(html);
+}
+
+/* ---- Nearest toilet (free — OpenStreetMap Overpass API, no key) ---- */
+async function openToiletsModal(){
+  openModal(`
+    <div class="modal-header"><h3>🚻 Nearest Toilets</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Finding your location…</p>
+  `);
+  let pos;
+  try{
+    pos = await getCurrentPosition();
+  }catch(err){
+    openModal(`
+      <div class="modal-header"><h3>🚻 Nearest Toilets</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+      <p class="muted-note" style="margin-top:0;">${escapeHtml(err.message)}</p>
+    `);
+    return;
+  }
+  openModal(`
+    <div class="modal-header"><h3>🚻 Nearest Toilets</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Searching OpenStreetMap for nearby toilets…</p>
+  `);
+  try{
+    // OSM's crowdsourced amenity=toilets tag, via the free public Overpass API — no key, no
+    // billing. Starts with a tight 1.5km radius (fast, plenty for a city center) and only
+    // widens to 5km if nothing turns up, since a bigger radius is a slower query.
+    let places = await queryNearbyToilets(pos, 1500);
+    if(places.length===0) places = await queryNearbyToilets(pos, 5000);
+    renderToiletsModal(pos, places);
+  }catch(err){
+    openModal(`
+      <div class="modal-header"><h3>🚻 Nearest Toilets</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+      <p class="muted-note" style="margin-top:0;">Couldn't reach OpenStreetMap's toilet directory right now (${escapeHtml(err.message)}). You can still <a href="https://www.google.com/maps/search/?api=1&query=toilet" target="_blank" rel="noopener">search "toilet" on Google Maps</a> directly.</p>
+    `);
+  }
+}
+async function queryNearbyToilets(pos, radiusMeters){
+  const query = `[out:json][timeout:15];node["amenity"="toilets"](around:${radiusMeters},${pos.lat},${pos.lng});out body;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: 'data=' + encodeURIComponent(query),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  });
+  if(!res.ok) throw new Error('Overpass API returned an error');
+  const json = await res.json();
+  return (json.elements||[]).map(el=>({
+    lat: el.lat, lng: el.lon,
+    name: (el.tags && el.tags.name) || 'Public Toilet',
+    fee: el.tags && el.tags.fee==='yes',
+    wheelchair: el.tags && el.tags.wheelchair==='yes',
+    dist: haversineMeters(pos.lat, pos.lng, el.lat, el.lon),
+  })).sort((a,b)=>a.dist-b.dist).slice(0,20);
+}
+function renderToiletsModal(pos, places){
+  const html = `
+    <div class="modal-header"><h3>🚻 Nearest Toilets</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    ${places.length===0 ? `<p class="muted-note" style="margin-top:0;">No toilets tagged on OpenStreetMap within 5km. Coverage varies by area — you can still <a href="https://www.google.com/maps/search/?api=1&query=toilet" target="_blank" rel="noopener">search on Google Maps</a>.</p>` : `
+    <p class="muted-note" style="margin-top:0;">From <a href="https://openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a> — a free, crowdsourced map. Coverage is best in city centers.</p>
+    <div class="nearby-list">
+      ${places.map(p=>`
+        <div class="nearby-row">
+          <div class="item-type-badge" style="flex-shrink:0;">🚻</div>
+          <div style="flex:1;min-width:0;">
+            <div class="item-name" style="white-space:normal;">${escapeHtml(p.name)}</div>
+            <div class="item-meta">
+              <span>${formatDistance(p.dist)} away</span>
+              ${p.fee? '<span>· 💰 fee</span>' : ''}
+              ${p.wheelchair? '<span>· ♿ accessible</span>' : ''}
+            </div>
+          </div>
+          <a class="nav-btn" href="${googleMapsDirectionsUrl(p.lat,p.lng)}" target="_blank" rel="noopener">🧭 Navigate</a>
+        </div>`).join('')}
+    </div>`}
+  `;
+  openModal(html);
+}
+
 function getTrip(id){ return data.trips.find(t=>t.id===id); }
 function sortedTrips(){
   return [...data.trips].sort((a,b)=> (a.startDate||'').localeCompare(b.startDate||''));
@@ -1917,6 +2083,8 @@ function renderTripDetail(){
         ${Array.from({length:numDays}).map((_,i)=>{ const d = addDays(trip.startDate, i); return `<option value="${d}">${fmtDateShort(d)}</option>`; }).join('')}
       </select>` : ''}
       <button class="btn btn-sm" onclick="ui.view='poi';render();">★ Places of Interest</button>
+      <button class="btn btn-sm" onclick="openNearbyModal('${trip.id}')">📍 Nearby</button>
+      <button class="btn btn-sm" onclick="openToiletsModal()">🚻 Toilets</button>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+ Add Activity</button>
       <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">💰 Trip Expenses</button>
     </div>
@@ -2877,14 +3045,50 @@ function renderExpenseRow(e, trip){
 }
 function renderExpenseReceiptUploadHtml(){
   if(tempReceiptPath){
-    return `<div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+    return `<div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
       <img src="${coverPublicUrl(tempReceiptPath)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);">
-      <span class="muted-note" style="flex:1;">Receipt attached.</span>
+      <span class="muted-note" style="flex:1;min-width:120px;">Receipt attached.</span>
+      <button type="button" class="btn btn-sm" onclick="scanReceiptWithAI()">🔍 Scan with AI</button>
       <button type="button" class="btn btn-sm" onclick="removeExpenseReceipt()">Remove</button>
     </div>`;
   }
   return `<input type="file" accept="image/*" capture="environment" id="expense-receipt-input" onchange="handleReceiptUpload(event)">
     <span class="muted-note">Snap a photo of the receipt, or pick one from your camera roll.</span>`;
+}
+// Sends the just-uploaded receipt photo to the scan-receipt Edge Function, which calls
+// Claude's vision model server-side (so the Anthropic API key never touches the browser) to
+// read the line items and translate them to English. Pre-fills the form for review rather
+// than saving straight to the database, since OCR/AI reads can occasionally mis-read a
+// number — a human glance before hitting Save is cheap insurance on a financial record.
+async function scanReceiptWithAI(){
+  if(!tempReceiptPath){ alert('Attach a receipt photo first.'); return; }
+  const imageUrl = coverPublicUrl(tempReceiptPath);
+  beginLoading();
+  try{
+    const { data, error } = await sb.functions.invoke('scan-receipt', { body: { imageUrl } });
+    if(error || (data && data.error)){
+      const msg = (data && data.message) || (error && error.message) || 'Unknown error';
+      alert('Could not scan the receipt: '+msg);
+      return;
+    }
+    const amountEl = document.getElementById('expense-amount-input');
+    const categoryEl = document.getElementById('expense-category-input');
+    const noteEl = document.getElementById('expense-note-input');
+    if(data.total!=null && amountEl) amountEl.value = Number(data.total).toFixed(2);
+    if(data.category_guess && EXPENSE_CATEGORIES.includes(data.category_guess) && categoryEl) categoryEl.value = data.category_guess;
+    if(noteEl){
+      const parts = [];
+      if(data.merchant) parts.push(data.merchant);
+      if(data.items && data.items.length) parts.push(data.items.map(i=>`${i.name} (${i.price!=null?i.price:'?'})`).join(', '));
+      if(data.currency) parts.push(`[${data.currency} on receipt — amount above may need converting]`);
+      if(parts.length) noteEl.value = parts.join(' — ');
+    }
+    showToast((data.items&&data.items.length) ? 'Receipt scanned — review and save' : 'Scanned, but could not read line items — please check');
+  }catch(e){
+    alert('Could not scan the receipt: '+(e.message||e));
+  } finally {
+    endLoading();
+  }
 }
 function refreshExpenseReceiptField(){
   const row = document.getElementById('expense-receipt-row');
