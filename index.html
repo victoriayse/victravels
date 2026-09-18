@@ -1108,9 +1108,14 @@ async function initTripMap(trip, dayItems, poiItems){
   if(tripMapInstance){ tripMapInstance.remove(); tripMapInstance = null; }
 
   const map = L.map(container, { scrollWheelZoom:false, zoomControl:false, touchZoom:true, tap:true, bounceAtZoomLimits:false }).setView([20,0], 2);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
+  // Switched from tile.openstreetmap.org — OSM's own tile servers are volunteer-run and
+  // only meant for casual/low-volume use, and they started 403-blocking this app once real
+  // traffic hit them. CARTO's free-tier basemap (5M tiles/month, no cost) is meant for
+  // exactly this kind of embedded use.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=cb1_3pgo_1_845ecf9bbbdc321e17ffb2ac', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
   }).addTo(map);
   tripMapInstance = map;
   enableTrackpadPinchZoom(map, container);
