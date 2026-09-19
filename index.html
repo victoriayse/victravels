@@ -358,8 +358,13 @@
   .detail-links-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .detail-notes{font-size:13.5px;line-height:1.65;color:var(--text);margin-bottom:16px;overflow-wrap:anywhere;}
   .detail-files{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;}
+  .detail-streetview-img{width:100%;height:160px;object-fit:cover;border-radius:12px;display:block;margin-bottom:14px;background:var(--bg-soft);}
+  .open-now-badge{padding:2px 10px;border-radius:999px;font-weight:600;}
+  .open-now-badge.open{background:rgba(52,199,89,0.15);color:#1f8b3d;}
+  .open-now-badge.closed{background:rgba(255,59,48,0.15);color:#c0392b;}
   @media (max-width:480px){
     .detail-gallery-img{height:220px;}
+    .detail-streetview-img{height:130px;}
     .lightbox-nav{width:32px;height:32px;font-size:18px;}
     /* On a narrow phone screen there's rarely room for a long activity name alongside its
        cost/booked-by column and still fit on one line — wrap to a second line instead of
@@ -940,6 +945,7 @@ function dbActivityToItem(a, fileRows){
     parentActivityId: a.parent_activity_id || null,
     lat: a.lat!=null ? Number(a.lat) : null,
     lng: a.lng!=null ? Number(a.lng) : null,
+    placeId: a.place_id || null,
     imagePaths: (a.image_paths && a.image_paths.length) ? a.image_paths : (a.cover_image_path ? [a.cover_image_path] : []),
     notes: a.notes || '',
     order: a.sort_order || 0,
@@ -1228,6 +1234,96 @@ async function showNavRoute(fromLat, fromLng, toLat, toLng, mode){
   map.fitBounds(bounds, 40);
 }
 
+/* ---- Places API (New): autocomplete, "open now" badge, auto-pulled photo ----
+   Text Search "IDs only" (field mask: places.id) is unlimited/free, so it's safe to call
+   speculatively for any legacy activity missing a cached place_id. Place Details is on the
+   Enterprise tier (1,000 free calls/month) — kept to the item detail modal only (not every
+   compact list card) to stay comfortably within that smaller cap, and combined into one call
+   covering both the open-now badge and the photo to minimize usage further. */
+function streetViewUrl(lat, lng, w, h){
+  return `https://maps.googleapis.com/maps/api/streetview?size=${w||640}x${h||300}&location=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+}
+function placesPhotoUrl(photoName, maxWidthPx){
+  return `https://places.googleapis.com/v1/${photoName}/media?maxWidthPx=${maxWidthPx||480}&key=${GOOGLE_MAPS_API_KEY}`;
+}
+async function resolvePlaceId(item){
+  if(item.placeId) return item.placeId;
+  if(item.lat==null || item.lng==null || !item.name) return null;
+  try{
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'places.id',
+      },
+      body: JSON.stringify({
+        textQuery: item.name,
+        locationBias: { circle: { center: { latitude: item.lat, longitude: item.lng }, radius: 200 } },
+      }),
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    return (data.places && data.places[0] && data.places[0].id) || null;
+  } catch(e){ return null; }
+}
+const placeDetailsCache = {}; // placeId -> {openNow, businessStatus, photoName} | null, per page session
+async function fetchPlaceDetails(placeId){
+  if(Object.prototype.hasOwnProperty.call(placeDetailsCache, placeId)) return placeDetailsCache[placeId];
+  try{
+    const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
+      headers: {
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'currentOpeningHours.openNow,businessStatus,photos',
+      },
+    });
+    if(!res.ok){ placeDetailsCache[placeId] = null; return null; }
+    const data = await res.json();
+    const result = {
+      openNow: data.currentOpeningHours && typeof data.currentOpeningHours.openNow === 'boolean' ? data.currentOpeningHours.openNow : null,
+      businessStatus: data.businessStatus || null,
+      photoName: (data.photos && data.photos[0] && data.photos[0].name) || null,
+    };
+    placeDetailsCache[placeId] = result;
+    return result;
+  } catch(e){ placeDetailsCache[placeId] = null; return null; }
+}
+// Fills in the "open now" badge and, if the activity has no manually-uploaded photo of its
+// own, an auto-pulled Places photo as a fallback gallery image — both async, after the detail
+// modal is already open. myToken guards against a stale fetch landing after the modal moved on.
+async function loadDetailPlaceExtras(tripId, item, myToken){
+  let placeId = item.placeId;
+  if(!placeId){
+    placeId = await resolvePlaceId(item);
+    if(detailModalRenderToken !== myToken) return;
+    if(placeId){
+      item.placeId = placeId;
+      sb.from('activities').update({ place_id: placeId }).eq('id', item.id).then(()=>{});
+    }
+  }
+  if(!placeId) return;
+  const details = await fetchPlaceDetails(placeId);
+  if(detailModalRenderToken !== myToken || !details) return;
+  const badgeEl = document.getElementById('detail-openbadge');
+  if(badgeEl){
+    if(details.businessStatus === 'CLOSED_PERMANENTLY'){
+      badgeEl.innerHTML = `<span class="open-now-badge closed">Permanently closed</span>`;
+    } else if(details.businessStatus === 'CLOSED_TEMPORARILY'){
+      badgeEl.innerHTML = `<span class="open-now-badge closed">Temporarily closed</span>`;
+    } else if(details.openNow === true){
+      badgeEl.innerHTML = `<span class="open-now-badge open">🟢 Open now</span>`;
+    } else if(details.openNow === false){
+      badgeEl.innerHTML = `<span class="open-now-badge closed">🔴 Closed now</span>`;
+    }
+  }
+  if(details.photoName && !(item.imagePaths && item.imagePaths.length)){
+    const galleryEl = document.getElementById('detail-gallery');
+    if(galleryEl && !galleryEl.innerHTML.trim()){
+      galleryEl.innerHTML = `<div class="detail-gallery-frame"><img src="${placesPhotoUrl(details.photoName, 640)}" class="detail-gallery-img" alt=""></div>`;
+    }
+  }
+}
+
 /* ---- Nearby activities ---- */
 function openNearbyModal(tripId){
   openModal(`
@@ -1501,12 +1597,34 @@ function loadGoogleMaps(){
     if(window.google && window.google.maps){ resolve(window.google.maps); return; }
     window.__onGoogleMapsLoaded = ()=> resolve(window.google.maps);
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,geometry&loading=async&callback=__onGoogleMapsLoaded`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,geometry,places&loading=async&callback=__onGoogleMapsLoaded`;
     script.async = true;
     script.onerror = ()=> reject(new Error('Failed to load Google Maps'));
     document.head.appendChild(script);
   });
   return googleMapsLoadPromise;
+}
+// Places Autocomplete on the Add/Edit Activity form's Name field: picking a real suggestion
+// captures its place_id and exact lat/lng directly (no geocoding round trip needed), and fills
+// in a Google Maps link if the field is still blank. Attached fresh each time the modal opens
+// since it's a real DOM element the widget binds to, not a persistent one.
+let placeAutocompleteInstance = null;
+async function initPlacesAutocomplete(){
+  let googleMaps;
+  try { googleMaps = await loadGoogleMaps(); } catch(e){ return; }
+  const input = document.getElementById('item-name-input');
+  if(!input || !googleMaps.places) return; // modal may have closed while Maps was loading
+  placeAutocompleteInstance = new googleMaps.places.Autocomplete(input, { fields: ['place_id','name','geometry','url'] });
+  placeAutocompleteInstance.addListener('place_changed', ()=>{
+    const place = placeAutocompleteInstance.getPlace();
+    if(!place || !place.geometry || !place.geometry.location) return;
+    tempPlaceId = place.place_id || null;
+    tempPlaceLatLng = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
+    const nameInput = document.getElementById('item-name-input');
+    if(nameInput && place.name) nameInput.value = place.name;
+    const mapsInput = document.getElementById('item-maps-input');
+    if(mapsInput && !mapsInput.value.trim() && place.url) mapsInput.value = place.url;
+  });
 }
 function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
@@ -2639,7 +2757,7 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
       date_start: d, date_end: d, time_start: null, time_end: null,
       link: basePayload.link, maps_link: basePayload.maps_link, card_color: basePayload.card_color,
       notes: basePayload.notes, sort_order: order, is_duplicate: true, parent_activity_id: parentId,
-      is_poi: basePayload.is_poi || false,
+      is_poi: basePayload.is_poi || false, place_id: basePayload.place_id || null,
     }).select().single();
     if(!error) trip.items.push(dbActivityToItem(row, []));
   }
@@ -2705,6 +2823,8 @@ let tempCoverPaths = [];
 let originalCoverPaths = [];
 let tempIconImagePath = null;
 let originalIconImagePath = null;
+let tempPlaceId = null;       // Places place_id captured via Autocomplete selection below
+let tempPlaceLatLng = null;   // {lat,lng} from that same selection — skips re-geocoding entirely
 function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
@@ -2716,6 +2836,8 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   originalCoverPaths = [...tempCoverPaths];
   tempIconImagePath = item && item.iconImagePath ? item.iconImagePath : null;
   originalIconImagePath = tempIconImagePath;
+  tempPlaceId = item && item.placeId ? item.placeId : null;
+  tempPlaceLatLng = null;
   modalPreventOutsideClose = true;
   const isPoiChecked = item ? !!item.isPoi : !!forcedIsPoi;
   const html = `
@@ -2756,7 +2878,8 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     </div>
     <div class="field">
       <label class="field-label">Name</label>
-      <input type="text" id="item-name-input" value="${item?escapeHtml(item.name):''}" placeholder="e.g. Flight to Tokyo">
+      <input type="text" id="item-name-input" autocomplete="off" value="${item?escapeHtml(item.name):''}" placeholder="e.g. Flight to Tokyo">
+      <span class="muted-note">Start typing to pick a real place — fills in its map pin (and Street View/photo) automatically.</span>
     </div>
     <div class="field">
       <label class="field-label">Booked by</label>
@@ -2835,6 +2958,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   openModal(html);
   renderFileChips();
   renderCoverPreview();
+  initPlacesAutocomplete();
 }
 function coverPublicUrl(path){
   if(!path) return '';
@@ -3022,10 +3146,15 @@ async function saveItem(tripId, itemId){
     icon_image_path: tempIconImagePath,
     notes: document.getElementById('item-notes-input').innerHTML,
     is_poi: document.getElementById('item-poi-input').checked,
+    place_id: tempPlaceId,
   };
   // Re-geocode if the location-relevant fields changed, so stale coordinates don't stick around.
+  // A fresh Places Autocomplete selection already carries exact coordinates, so it skips the
+  // geocoding pass entirely rather than clearing lat/lng and waiting for the map to fill them in.
   let coordsCleared = false;
-  if(existingItem && (existingItem.mapsLink !== (payload.maps_link||'') || existingItem.name !== payload.name)){
+  if(tempPlaceLatLng){
+    payload.lat = tempPlaceLatLng.lat; payload.lng = tempPlaceLatLng.lng;
+  } else if(existingItem && (existingItem.mapsLink !== (payload.maps_link||'') || existingItem.name !== payload.name)){
     payload.lat = null; payload.lng = null; coordsCleared = true;
   }
   // Images removed during this edit (still present in the original set, no longer in the
@@ -3068,8 +3197,9 @@ async function saveItem(tripId, itemId){
       link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
       imagePaths: payload.image_paths || [],
       iconImagePath: payload.icon_image_path || null,
-      lat: coordsCleared ? null : (existingItem ? existingItem.lat : null),
-      lng: coordsCleared ? null : (existingItem ? existingItem.lng : null),
+      lat: tempPlaceLatLng ? tempPlaceLatLng.lat : (coordsCleared ? null : (existingItem ? existingItem.lat : null)),
+      lng: tempPlaceLatLng ? tempPlaceLatLng.lng : (coordsCleared ? null : (existingItem ? existingItem.lng : null)),
+      placeId: payload.place_id || null,
       isDuplicate: existingItem ? existingItem.isDuplicate : false,
       isPoi: payload.is_poi,
       parentActivityId: existingItem ? existingItem.parentActivityId : null,
@@ -3533,6 +3663,9 @@ function closeModal(){
   document.getElementById('modal-content').innerHTML = '';
   document.getElementById('modal-content').className = 'modal';
   modalPreventOutsideClose = false;
+  // The Places Autocomplete widget appends its suggestion dropdown to <body>, outside the
+  // modal — it isn't cleaned up automatically when the input it's bound to gets wiped above.
+  document.querySelectorAll('.pac-container').forEach(el=>el.remove());
 }
 document.getElementById('modal-overlay').addEventListener('click', e=>{
   if(e.target.id==='modal-overlay' && !modalPreventOutsideClose) closeModal();
@@ -3668,6 +3801,7 @@ async function shareLocation(tripId, itemId){
    it in one place — images, meta, notes, and attachments — instead of only the edit form. */
 let detailGalleryImages = [];
 let detailGalleryIndex = 0;
+let detailModalRenderToken = 0;
 function openItemDetailModal(tripId, itemId){
   const trip = getTrip(tripId);
   const item = trip && trip.items.find(i=>i.id===itemId);
@@ -3675,13 +3809,16 @@ function openItemDetailModal(tripId, itemId){
   closePopovers();
   detailGalleryImages = item.imagePaths || [];
   detailGalleryIndex = 0;
+  const myToken = ++detailModalRenderToken;
+  const hasStreetView = item.lat!=null && item.lng!=null;
   const linkedNotes = linkifyNotes(item.notes);
   const html = `
     <div class="modal-header">
       <h3>${escapeHtml(item.name||'Untitled')}</h3>
       <button class="modal-close" onclick="closeModal()">&times;</button>
     </div>
-    ${detailGalleryImages.length ? `<div id="detail-gallery">${renderDetailGalleryHtml()}</div>` : ''}
+    <div id="detail-gallery">${detailGalleryImages.length ? renderDetailGalleryHtml() : ''}</div>
+    ${hasStreetView ? `<img src="${streetViewUrl(item.lat,item.lng,640,200)}" class="detail-streetview-img" alt="Street View">` : ''}
     <div class="detail-meta-row">
       <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
       <span class="detail-type-pill">${iconGlyphHtml(item, 16)} ${item.type}${item.isPoi?' · Place of Interest':''}</span>
@@ -3689,6 +3826,7 @@ function openItemDetailModal(tripId, itemId){
       ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
       ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
       ${Number(item.costTotal)>0? `<span>💰 ${fmtCost(item.costTotal)}${item.costPerPax?' ('+fmtCost(item.costPerPax)+'/pax)':''}</span>`:''}
+      <span id="detail-openbadge"></span>
     </div>
     ${(item.link||item.mapsLink)? `<div class="detail-links-row">
       ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">🔗 Link</a>`:''}
@@ -3704,6 +3842,7 @@ function openItemDetailModal(tripId, itemId){
       <button class="btn btn-primary" onclick="closeModal()">Close</button>
     </div>`;
   openModal(html, true);
+  loadDetailPlaceExtras(trip.id, item, myToken);
 }
 function renderDetailGalleryHtml(){
   const multi = detailGalleryImages.length > 1;
