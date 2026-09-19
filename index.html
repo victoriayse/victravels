@@ -500,6 +500,7 @@
   .card-distance-badge.ready{cursor:pointer;}
   .card-distance-badge.ready:hover{color:var(--text);}
   .card-distance-badge .popover{top:22px;left:0;right:auto;min-width:180px;}
+  .card-openbadge:empty{display:none;}
 
   /* PRESET COLOR PICKER (Card Color field) — a trigger swatch that opens a panel of
      fixed, precomputed swatches (quick colors + a hue/lightness grid), never an open
@@ -1324,6 +1325,43 @@ async function loadDetailPlaceExtras(tripId, item, myToken){
     }
   }
 }
+// Builds the small "open now"/"closed" markup shared by the item detail modal, the compact
+// card badge, and the map pin hover tooltip, so all three stay visually and logically in sync.
+function openBadgeHtml(details){
+  if(!details) return '';
+  if(details.businessStatus === 'CLOSED_PERMANENTLY') return `<span class="open-now-badge closed">Permanently closed</span>`;
+  if(details.businessStatus === 'CLOSED_TEMPORARILY') return `<span class="open-now-badge closed">Temporarily closed</span>`;
+  if(details.openNow === true) return `<span class="open-now-badge open">🟢 Open</span>`;
+  if(details.openNow === false) return `<span class="open-now-badge closed">🔴 Closed</span>`;
+  return '';
+}
+// Fills in each card's small open-now badge (day view, POI view) — same lazy resolve+cache
+// path as the detail modal, so repeat visits/hovers of an already-resolved place cost nothing
+// extra. Runs after the card list is in the DOM, one item at a time, same pattern as
+// loadDistanceBadges.
+let cardOpenBadgeRenderToken = 0;
+async function loadCardOpenBadges(trip, items){
+  if(!trip || !items || !items.length) return;
+  const myToken = ++cardOpenBadgeRenderToken;
+  for(const item of items){
+    if(item.lat==null || item.lng==null) continue;
+    if(!document.getElementById(`cardopenbadge-${item.id}`)) continue;
+    let placeId = item.placeId;
+    if(!placeId){
+      placeId = await resolvePlaceId(item);
+      if(cardOpenBadgeRenderToken !== myToken) return;
+      if(placeId){
+        item.placeId = placeId;
+        sb.from('activities').update({ place_id: placeId }).eq('id', item.id).then(()=>{});
+      }
+    }
+    if(!placeId) continue;
+    const details = await fetchPlaceDetails(placeId);
+    if(cardOpenBadgeRenderToken !== myToken) return;
+    const el = document.getElementById(`cardopenbadge-${item.id}`);
+    if(el) el.innerHTML = openBadgeHtml(details);
+  }
+}
 
 /* ---- Nearby activities ---- */
 function openNearbyModal(tripId){
@@ -1495,6 +1533,9 @@ function afterRender(){
   }
   if(ui.view==='tripDetail' && lastTripDetailTrip){
     loadDistanceBadges(lastTripDetailTrip, lastTripDetailItems);
+  }
+  if((ui.view==='tripDetail' || ui.view==='poi') && lastTripDetailTrip){
+    loadCardOpenBadges(lastTripDetailTrip, lastTripDetailItems);
   }
   renderCountdownStrip();
   syncDayNavSticky();
@@ -1706,8 +1747,9 @@ async function initTripMap(trip, dayItems, poiItems){
       el = makeDayPinEl(glyph, color);
       extraText = dayNum!=null ? ` · Day ${dayNum}` : '';
     }
-    // A plain-text title attribute stands in for the old rich hover tooltip — simpler,
-    // and works fine since it's just supplementary info on top of the pin itself.
+    // Plain native tooltip — no live open-now lookup here, so hovering pins never spends
+    // any of the Places Details free-tier allowance (the card badges and detail popup
+    // still resolve it, just not on every pin hover).
     el.title = `${item.name||'Untitled'}${(!isStar && item.timeStart)? ' · '+itemTimeLabel(item):''}${extraText}`;
     el.style.cursor = 'pointer';
     const marker = new googleMaps.marker.AdvancedMarkerElement({
@@ -2279,6 +2321,7 @@ function updateItemSearch(tripId, value){
   const listEl = document.getElementById('item-list');
   if(listEl) listEl.innerHTML = items.length===0? '<div class="empty-state"><span class="emoji">📋</span><p>No activities match this view.</p></div>' : renderItemList(items, trip);
   loadDistanceBadges(trip, items);
+  loadCardOpenBadges(trip, items);
 }
 function renderTripDetail(){
   const trip = getTrip(ui.detailTripId);
@@ -2519,6 +2562,7 @@ function renderItemCard(item, trip){
         <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class=\"dup-badge\">Continued</span>':''}</div>
         <div class="item-meta">
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
+          ${item.lat!=null && item.lng!=null? `<span id="cardopenbadge-${item.id}" class="card-openbadge"></span>`:''}
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
           ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 Link</a>`:''}
