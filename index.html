@@ -372,6 +372,7 @@
     .item-name{white-space:normal;overflow:visible;text-overflow:clip;}
   }
   .item-cost{font-family:var(--font-serif);font-weight:600;font-size:14.5px;white-space:nowrap;}
+  .cost-eur-sub{font-size:11px;font-style:italic;color:var(--text-muted);margin-top:1px;white-space:nowrap;}
   .item-bookedby{font-size:11.5px;color:var(--text-muted);white-space:nowrap;display:flex;align-items:center;gap:3px;}
   .item-edit-btn{
     background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;
@@ -745,6 +746,29 @@ function fmtCost(n){
   n = Number(n)||0;
   return 'S$'+n.toLocaleString('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+// Converts a cost that may have been entered in EUR to its SGD equivalent, using the live
+// EUR/SGD rate from the currency converter (see ensureCurrencyRate). Falls back to the raw
+// amount, unconverted, for the brief window before the rate has first loaded — corrected
+// automatically once it arrives, since every page that shows costs re-renders often.
+function toSgd(amount, currency){
+  amount = Number(amount) || 0;
+  if(currency !== 'EUR') return amount;
+  return currencyRate!=null ? amount * currencyRate : amount;
+}
+// Renders a single listing's own cost: always shown converted to SGD (the app's one
+// consistent currency), with a small grey-italic line underneath showing the original €
+// amount for anything actually entered in EUR — so what was really paid isn't lost.
+// Aggregated totals (Overview, Expenses/budget) use toSgd() directly instead, since summing
+// several listings' original currencies into one italic sub-figure wouldn't mean anything.
+function costHtml(amount, currency, suffix){
+  amount = Number(amount) || 0;
+  if(amount<=0) return '';
+  suffix = suffix || '';
+  if(currency !== 'EUR') return fmtCost(amount)+suffix;
+  const sgd = toSgd(amount, currency);
+  const eurFmt = '€'+amount.toLocaleString('en-SG',{minimumFractionDigits:2,maximumFractionDigits:2});
+  return `${fmtCost(sgd)}${suffix}<div class="cost-eur-sub">${eurFmt}${suffix}</div>`;
+}
 function statusClass(s){ return 'status-'+s.replace(/\s+/g,''); }
 function addDays(dateStr, n){
   const d = parseDate(dateStr);
@@ -935,6 +959,7 @@ function dbActivityToItem(a, fileRows){
     name: a.name,
     costTotal: Number(a.cost_total) || 0,
     costPerPax: Number(a.cost_per_pax) || 0,
+    currency: a.currency==='EUR' ? 'EUR' : 'SGD',
     dateStart: a.date_start || '',
     dateEnd: a.date_end || '',
     timeStart: a.time_start ? a.time_start.slice(0,5) : '',
@@ -1541,7 +1566,10 @@ function render(){
 }
 
 function afterRender(){
-  if(ui.view==='home'){ renderExpensesChart(); ensureCurrencyRate(); }
+  // Loaded on every view, not just Home — EUR-priced items can show a converted-to-SGD
+  // cost on tripDetail/poi/trips too, so the rate needs to be available there as well.
+  ensureCurrencyRate();
+  if(ui.view==='home'){ renderExpensesChart(); }
   if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
     initTripMap(lastTripDetailTrip, lastTripDetailItems, (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
@@ -1844,7 +1872,7 @@ let currencyRateDate = null;
 let currencyRateLoading = false;
 let currencyRateFailed = false;
 async function ensureCurrencyRate(){
-  if(currencyRate!=null || currencyRateLoading) return;
+  if(currencyRate!=null || currencyRateLoading || currencyRateFailed) return;
   currencyRateLoading = true;
   currencyRateFailed = false;
   try{
@@ -1866,6 +1894,10 @@ async function ensureCurrencyRate(){
   currencyRateLoading = false;
   const card = document.getElementById('currency-converter-card');
   if(card) card.outerHTML = renderCurrencyConverterCard();
+  // Any EUR-priced costs already on screen (on views other than Home, which patches
+  // its own card above) were drawn using the raw fallback before the rate arrived —
+  // re-render once now that it's loaded so they show the converted SGD figure.
+  if(currencyRate!=null && ui.view!=='home') render();
 }
 function retryCurrencyRate(){
   currencyRateFailed = false;
@@ -2015,6 +2047,9 @@ function renderCountdownCard(trip){
 
 function renderOverviewCard(trip){
   const countries = trip.countries||[];
+  // Every listing's cost is normalized to SGD before summing — a mix of EUR- and
+  // SGD-entered activities still adds up to one meaningful total.
+  const totalSgd = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card">
       <div class="section-title">Trip Overview</div>
@@ -2024,6 +2059,7 @@ function renderOverviewCard(trip){
         <div><div class="stat-num">${countries.length}</div><div class="stat-label">COUNTRIES</div></div>
         <div><div class="stat-num">${(trip.items||[]).filter(i=>!i.isPoi).length}</div><div class="stat-label">ACTIVITIES</div></div>
       </div>
+      ${totalSgd>0? `<div class="countdown-sub" style="margin-top:12px;">Total cost so far: <strong style="color:var(--text);">${fmtCost(totalSgd)}</strong></div>` : ''}
     </div>`;
 }
 
@@ -2068,7 +2104,7 @@ function renderAccommodationsCard(trip){
 function renderExpensesCard(trip){
   const filter = ui.homeExpensesFilter;
   const items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
-  const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
+  const total = items.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card">
       <div class="section-title">Expenses</div>
@@ -2094,7 +2130,7 @@ function renderExpensesChart(){
   const filter = ui.homeExpensesFilter;
   const byType = {};
   (trip.items||[]).forEach(i=>{
-    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency);
   });
   const labels = Object.keys(byType);
   if(expensesChart) expensesChart.destroy();
@@ -2203,7 +2239,7 @@ function renderTrips(){
 }
 
 function renderTripCard(trip){
-  const total = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+(Number(i.costTotal)||0),0);
+  const total = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card trip-card" onclick="openTripDetail('${trip.id}')">
       <h3>${escapeHtml(trip.name)}</h3>
@@ -2629,7 +2665,7 @@ function renderItemCard(item, trip){
         ${notesHtml}
       </div>
       <div class="item-side">
-        <div class="item-cost">${Number(item.costPerPax)>0? fmtCost(item.costPerPax)+' / pax': ''}</div>
+        <div class="item-cost">${costHtml(item.costPerPax, item.currency, ' / pax')}</div>
         ${item.bookedBy? `<div class="item-bookedby">👤 ${escapeHtml(item.bookedBy)}</div>` : ''}
       </div>
       ${(item.imagePaths&&item.imagePaths.length)? `
@@ -2809,7 +2845,7 @@ async function duplicateItem(tripId, itemId){
   const payload = {
     trip_id: tripId, type: item.type, icon: item.icon || null, icon_image_path: item.iconImagePath || null, status: item.status,
     booked_by: item.bookedBy || null, name: item.name,
-    cost_total: item.costTotal || 0, cost_per_pax: item.costPerPax || 0,
+    cost_total: item.costTotal || 0, cost_per_pax: item.costPerPax || 0, currency: item.currency || 'SGD',
     date_start: item.dateStart || null, date_end: item.dateEnd || null,
     time_start: item.timeStart || null, time_end: item.timeEnd || null,
     link: item.link || null, maps_link: item.mapsLink || null,
@@ -2855,7 +2891,7 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
     const { data: row, error } = await sb.from('activities').insert({
       trip_id: tripId, type: basePayload.type, icon: basePayload.icon, icon_image_path: basePayload.icon_image_path || null, status: basePayload.status,
       booked_by: basePayload.booked_by, name: basePayload.name,
-      cost_total: basePayload.cost_total, cost_per_pax: basePayload.cost_per_pax,
+      cost_total: basePayload.cost_total, cost_per_pax: basePayload.cost_per_pax, currency: basePayload.currency || 'SGD',
       date_start: d, date_end: d, time_start: null, time_end: null,
       link: basePayload.link, maps_link: basePayload.maps_link, card_color: basePayload.card_color,
       notes: basePayload.notes, sort_order: order, is_duplicate: true, parent_activity_id: parentId,
@@ -2902,7 +2938,7 @@ async function moveItemToDate(tripId, itemId){
     item.dateEnd = newEnd;
     await reconcileDuplicates(tripId, itemId, {
       type: item.type, icon: item.icon||null, icon_image_path: item.iconImagePath||null, status: item.status, booked_by: item.bookedBy||null,
-      name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0,
+      name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0, currency: item.currency||'SGD',
       date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
       card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
     }, item.order||0);
@@ -2999,6 +3035,16 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
         <label class="field-label">Cost (Per Pax)</label>
         <input type="number" min="0" step="0.01" id="item-cost-perpax-input" value="${item&&item.costPerPax?item.costPerPax:''}" placeholder="0.00">
       </div>
+      <div class="field" style="flex:0.6;">
+        <label class="field-label">Currency</label>
+        <select id="item-currency-input" onchange="document.getElementById('item-currency-hint').style.display = this.value==='EUR' ? '' : 'none';">
+          <option value="SGD" ${(!item||item.currency!=='EUR')?'selected':''}>SGD</option>
+          <option value="EUR" ${item&&item.currency==='EUR'?'selected':''}>EUR</option>
+        </select>
+      </div>
+    </div>
+    <div class="field" id="item-currency-hint" style="display:${item&&item.currency==='EUR'?'':'none'};">
+      <span class="muted-note">Entered in euros — shown converted to SGD everywhere else in the app, with the original € amount underneath.</span>
     </div>
     <div class="field-row">
       <div class="field">
@@ -3251,6 +3297,7 @@ async function saveItem(tripId, itemId){
     name,
     cost_total: parseFloat(document.getElementById('item-cost-total-input').value) || 0,
     cost_per_pax: parseFloat(document.getElementById('item-cost-perpax-input').value) || 0,
+    currency: document.getElementById('item-currency-input').value === 'EUR' ? 'EUR' : 'SGD',
     date_start: dateStart || null,
     date_end: dateEnd || null,
     time_start: timeStart || null,
@@ -3307,7 +3354,7 @@ async function saveItem(tripId, itemId){
     const localItem = {
       id: savedId,
       type: payload.type, icon: payload.icon || '', status: payload.status, bookingOpensDate: payload.booking_opens_date || '', bookedBy: payload.booked_by || '',
-      name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
+      name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax, currency: payload.currency,
       dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
       timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
       link: payload.link || '', mapsLink: payload.maps_link || '', cardColor: payload.card_color || '',
@@ -3662,7 +3709,7 @@ function renderExpensesModal(tripId){
   const items = (trip.items||[]).filter(i=> !i.isDuplicate && !i.isPoi && Number(i.costTotal)>0
     && (filterType==='all' || i.type===filterType)
     && (filterBookedBy==='all' || i.bookedBy===filterBookedBy));
-  const total = items.reduce((s,i)=>s+Number(i.costTotal),0);
+  const total = items.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   const html = `
     <div class="modal-header">
       <h3>Expenses — ${escapeHtml(trip.name)}</h3>
@@ -3700,7 +3747,7 @@ function renderTripExpensesChart(tripId){
   const byType = {};
   (trip.items||[]).forEach(i=>{
     if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
-      byType[i.type] = (byType[i.type]||0) + Number(i.costTotal);
+      byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency);
     }
   });
   const labels = Object.keys(byType);
@@ -3946,7 +3993,7 @@ function openItemDetailModal(tripId, itemId){
       ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
       ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
       ${item.bookedBy? `<span>👤 ${escapeHtml(item.bookedBy)}</span>`:''}
-      ${Number(item.costTotal)>0? `<span>💰 ${fmtCost(item.costTotal)}${item.costPerPax?' ('+fmtCost(item.costPerPax)+'/pax)':''}</span>`:''}
+      ${Number(item.costTotal)>0? `<span style="display:inline-block;">💰 ${costHtml(item.costTotal, item.currency)}${item.costPerPax?` (${fmtCost(toSgd(item.costPerPax,item.currency))}/pax)`:''}</span>`:''}
       <span id="detail-openbadge"></span>
     </div>
     ${(item.link||item.mapsLink)? `<div class="detail-links-row">
