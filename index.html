@@ -358,13 +358,11 @@
   .detail-links-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .detail-notes{font-size:13.5px;line-height:1.65;color:var(--text);margin-bottom:16px;overflow-wrap:anywhere;}
   .detail-files{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;}
-  .detail-streetview-img{width:100%;height:160px;object-fit:cover;border-radius:12px;display:block;margin-bottom:14px;background:var(--bg-soft);}
   .open-now-badge{padding:2px 10px;border-radius:999px;font-weight:600;}
   .open-now-badge.open{background:rgba(52,199,89,0.15);color:#1f8b3d;}
   .open-now-badge.closed{background:rgba(255,59,48,0.15);color:#c0392b;}
   @media (max-width:480px){
     .detail-gallery-img{height:220px;}
-    .detail-streetview-img{height:130px;}
     .lightbox-nav{width:32px;height:32px;font-size:18px;}
     /* On a narrow phone screen there's rarely room for a long activity name alongside its
        cost/booked-by column and still fit on one line — wrap to a second line instead of
@@ -1316,9 +1314,12 @@ async function loadDetailPlaceExtras(tripId, item, myToken){
       badgeEl.innerHTML = `<span class="open-now-badge closed">🔴 Closed now</span>`;
     }
   }
+  // Overwrites whatever's currently in the gallery slot — including a Street View placeholder
+  // shown while this was loading — with the real place photo, as long as there's no manually
+  // uploaded photo of the user's own to protect.
   if(details.photoName && !(item.imagePaths && item.imagePaths.length)){
     const galleryEl = document.getElementById('detail-gallery');
-    if(galleryEl && !galleryEl.innerHTML.trim()){
+    if(galleryEl){
       galleryEl.innerHTML = `<div class="detail-gallery-frame"><img src="${placesPhotoUrl(details.photoName, 640)}" class="detail-gallery-img" alt=""></div>`;
     }
   }
@@ -3810,15 +3811,20 @@ function openItemDetailModal(tripId, itemId){
   detailGalleryImages = item.imagePaths || [];
   detailGalleryIndex = 0;
   const myToken = ++detailModalRenderToken;
-  const hasStreetView = item.lat!=null && item.lng!=null;
+  // Street View acts as an instant placeholder hero image (no fetch needed — just lat/lng)
+  // for activities with no photo of their own yet. If the async Places lookup below finds a
+  // real photo of the place, it replaces this placeholder rather than stacking a second image
+  // underneath it.
+  const hasStreetViewFallback = !detailGalleryImages.length && item.lat!=null && item.lng!=null;
   const linkedNotes = linkifyNotes(item.notes);
   const html = `
     <div class="modal-header">
       <h3>${escapeHtml(item.name||'Untitled')}</h3>
       <button class="modal-close" onclick="closeModal()">&times;</button>
     </div>
-    <div id="detail-gallery">${detailGalleryImages.length ? renderDetailGalleryHtml() : ''}</div>
-    ${hasStreetView ? `<img src="${streetViewUrl(item.lat,item.lng,640,200)}" class="detail-streetview-img" alt="Street View">` : ''}
+    <div id="detail-gallery">${detailGalleryImages.length ? renderDetailGalleryHtml()
+      : hasStreetViewFallback ? `<div class="detail-gallery-frame"><img src="${streetViewUrl(item.lat,item.lng,640,320)}" class="detail-gallery-img" alt="Street View"></div>`
+      : ''}</div>
     <div class="detail-meta-row">
       <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
       <span class="detail-type-pill">${iconGlyphHtml(item, 16)} ${item.type}${item.isPoi?' · Place of Interest':''}</span>
