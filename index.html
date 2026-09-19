@@ -495,6 +495,22 @@
     color:#c9971f;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
     box-shadow:0 2px 6px rgba(0,0,0,0.3);
   }
+  /* "My location" dot — same visual language as Google Maps' own blue-dot marker, so it
+     reads instantly as "you are here" rather than another activity pin. */
+  .map-mydot{
+    width:16px;height:16px;border-radius:50%;background:#4285F4;border:3px solid #fff;
+    box-shadow:0 0 0 4px rgba(66,133,244,0.35), 0 2px 6px rgba(0,0,0,0.3);
+  }
+  /* Custom Google Maps control button — added via map.controls[...] so Maps positions and
+     manages it itself, rather than an absolutely-positioned element fighting the map's own
+     internal DOM. */
+  .map-locate-btn{
+    width:40px;height:40px;margin:10px;border-radius:50%;background:#fff;border:1px solid var(--border-strong);
+    box-shadow:0 2px 6px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;
+    font-size:18px;line-height:1;cursor:pointer;padding:0;
+  }
+  .map-locate-btn:hover{background:var(--bg-soft);}
+  .map-locate-btn:disabled{opacity:0.6;cursor:default;}
   .card-distance-badge{
     position:relative;display:flex;align-items:center;gap:6px;margin:2px 0 2px 22px;padding:2px 0;
     font-size:12.5px;color:var(--text-muted);min-height:1px;
@@ -899,6 +915,7 @@ let lastTripDetailTrip = null;
 let lastTripDetailItems = [];
 let tripMapInstance = null;
 let tripMapRenderToken = 0;
+let myLocationMarker = null; // the "you are here" dot dropped by the map's locate button
 
 /* ---- Load everything from Supabase into the same in-memory shape the UI already expects ---- */
 async function loadAllData(){
@@ -950,6 +967,7 @@ function dbShoppingItemToItem(s){
     id: s.id, tripId: s.trip_id, country: s.country || '', itemName: s.item_name || '',
     price: Number(s.price) || 0, currency: s.currency==='EUR' ? 'EUR' : 'SGD',
     foundAt: s.found_at || '', notes: s.notes || '', isBought: !!s.is_bought,
+    imagePath: s.image_path || null,
     createdAt: s.created_at || '',
   };
 }
@@ -1743,6 +1761,45 @@ function makeStarPinEl(glyph){
   el.innerHTML = glyph || '★';
   return el;
 }
+function makeMyLocationEl(){
+  const el = document.createElement('div');
+  el.className = 'map-mydot';
+  return el;
+}
+// A Google Maps custom control — added to map.controls[] below so Maps positions it
+// alongside its own zoom/street-view controls, instead of an absolutely-positioned
+// element layered on top and fighting the map's internal DOM on re-render.
+function makeLocateControlButton(map, googleMaps){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'map-locate-btn';
+  btn.title = 'Show my location on the map';
+  btn.setAttribute('aria-label', 'Show my location on the map');
+  btn.innerHTML = '🎯';
+  btn.addEventListener('click', ()=> locateMeOnTripMap(map, googleMaps, btn));
+  return btn;
+}
+// Drops/moves a single "you are here" dot at the current device location and centers the
+// map there — reuses the same Geolocation flow as Nearby/Nearest Toilet (one permission
+// prompt, no API key, no cost). Only one dot is ever shown at a time; pressing the button
+// again just moves it to the freshly-read position.
+async function locateMeOnTripMap(map, googleMaps, btnEl){
+  if(btnEl){ btnEl.disabled = true; btnEl.innerHTML = '…'; }
+  try{
+    const pos = await getCurrentPosition();
+    if(myLocationMarker) myLocationMarker.map = null;
+    const el = makeMyLocationEl();
+    myLocationMarker = new googleMaps.marker.AdvancedMarkerElement({
+      map, position: pos, content: el, zIndex: 999, title: 'You are here',
+    });
+    map.panTo(pos);
+    if(map.getZoom() < 14) map.setZoom(15);
+  } catch(err){
+    alert(err.message);
+  } finally {
+    if(btnEl){ btnEl.disabled = false; btnEl.innerHTML = '🎯'; }
+  }
+}
 async function initTripMap(trip, dayItems, poiItems){
   poiItems = poiItems || [];
   const container = document.getElementById('trip-map');
@@ -1770,6 +1827,11 @@ async function initTripMap(trip, dayItems, poiItems){
     mapTypeControl:false, fullscreenControl:false, mapId:'DEMO_MAP_ID',
   });
   tripMapInstance = map;
+  // This is a brand-new Map instance, so any marker from a previous render is already gone
+  // along with it — drop the stale reference rather than trying to clear a dot bound to a
+  // map that no longer exists.
+  myLocationMarker = null;
+  map.controls[googleMaps.ControlPosition.RIGHT_BOTTOM].push(makeLocateControlButton(map, googleMaps));
 
   const markers = [];
   // Places of Interest stars still get plotted on the map (visible if they happen to fall
@@ -3778,9 +3840,11 @@ function renderTripExpensesChart(tripId){
    Paris" — tracked separately from booked-activity costs and the ad-hoc Trip Expenses log.
    Prices follow the same EUR/SGD pattern as activity costs (see toSgd/costHtml). */
 let editingShoppingItemId = null;
+let tempShoppingImagePath = null;
 function openShoppingList(tripId){
   ui.detailTripId = tripId;
   editingShoppingItemId = null;
+  tempShoppingImagePath = null;
   modalPreventOutsideClose = true;
   renderShoppingListModal(tripId);
 }
@@ -3836,6 +3900,10 @@ function renderShoppingListModal(tripId){
         <label class="field-label">Notes <span style="font-weight:400;">(optional)</span></label>
         <input type="text" id="shopping-notes-input" placeholder="e.g. Get the blue one, compare prices first" value="${editing&&editing.notes?escapeHtml(editing.notes):''}">
       </div>
+      <div class="field">
+        <label class="field-label">Photo <span style="font-weight:400;">(optional)</span></label>
+        <div id="shopping-image-row">${renderShoppingImageUploadHtml()}</div>
+      </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" onclick="saveShoppingItem('${trip.id}')">${editing? 'Save Changes' : '+ Add Item'}</button>
         ${editing? `<button class="btn" onclick="cancelEditShoppingItem('${trip.id}')">Cancel</button>` : ''}
@@ -3886,6 +3954,9 @@ function renderShoppingRow(item, trip){
   const metaBits = [item.foundAt? '📍 '+escapeHtml(item.foundAt):'', item.notes? escapeHtml(item.notes):''].filter(Boolean).join(' · ');
   return `<div class="card expense-row" id="shopping-row-${item.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;${item.isBought?'opacity:0.55;':''}">
     <input type="checkbox" ${item.isBought?'checked':''} onclick="event.stopPropagation();toggleShoppingBought('${trip.id}','${item.id}')" style="flex-shrink:0;width:18px;height:18px;cursor:pointer;">
+    ${item.imagePath
+      ? `<a href="${coverPublicUrl(item.imagePath)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><img src="${coverPublicUrl(item.imagePath)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0;"></a>`
+      : ''}
     <div style="flex:1;min-width:0;cursor:pointer;" onclick="startEditShoppingItem('${trip.id}','${item.id}')">
       <div style="font-weight:600;${item.isBought?'text-decoration:line-through;':''}">${escapeHtml(item.itemName||'Untitled')}</div>
       ${Number(item.price)>0? `<div>${costHtml(item.price, item.currency)}</div>` : ''}
@@ -3900,13 +3971,51 @@ function startEditShoppingItem(tripId, itemId){
   const item = trip && (trip.shoppingItems||[]).find(i=>i.id===itemId);
   if(!item) return;
   editingShoppingItemId = itemId;
+  tempShoppingImagePath = item.imagePath || null;
   renderShoppingListModal(tripId);
   const formEl = document.getElementById('shopping-form-card');
   if(formEl && formEl.scrollIntoView) formEl.scrollIntoView({ behavior:'smooth', block:'start' });
 }
 function cancelEditShoppingItem(tripId){
   editingShoppingItemId = null;
+  tempShoppingImagePath = null;
   renderShoppingListModal(tripId);
+}
+// Mirrors the Trip Expenses receipt-photo upload pattern (see renderExpenseReceiptUploadHtml/
+// handleReceiptUpload) — same "attachments" bucket, same no-capture-attribute choice so mobile
+// browsers show their normal camera-or-gallery picker instead of forcing the camera straight open.
+function renderShoppingImageUploadHtml(){
+  if(tempShoppingImagePath){
+    return `<div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
+      <img src="${coverPublicUrl(tempShoppingImagePath)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);">
+      <span class="muted-note" style="flex:1;min-width:120px;">Photo attached.</span>
+      <button type="button" class="btn btn-sm" onclick="removeShoppingImage()">Remove</button>
+    </div>`;
+  }
+  return `<input type="file" accept="image/*" id="shopping-image-input" onchange="handleShoppingImageUpload(event)">
+    <span class="muted-note">Snap a photo of the item, or pick one from your gallery.</span>`;
+}
+function refreshShoppingImageField(){
+  const row = document.getElementById('shopping-image-row');
+  if(row) row.innerHTML = renderShoppingImageUploadHtml();
+}
+async function handleShoppingImageUpload(e){
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  beginLoading();
+  try{
+    const path = `shared/shopping/item_${Date.now()}_${sanitizeFileName(file.name)}`;
+    const { error } = await sb.storage.from('attachments').upload(path, file);
+    if(error){ alert('Photo upload failed: '+error.message); return; }
+    tempShoppingImagePath = path;
+    refreshShoppingImageField();
+  } finally {
+    endLoading();
+  }
+}
+function removeShoppingImage(){
+  tempShoppingImagePath = null;
+  refreshShoppingImageField();
 }
 async function saveShoppingItem(tripId){
   const trip = getTrip(tripId);
@@ -3918,7 +4027,7 @@ async function saveShoppingItem(tripId){
   const currency = document.getElementById('shopping-currency-input').value === 'EUR' ? 'EUR' : 'SGD';
   const foundAt = document.getElementById('shopping-foundat-input').value.trim() || null;
   const notes = document.getElementById('shopping-notes-input').value.trim() || null;
-  const payload = { trip_id: tripId, country, item_name: itemName, price, currency, found_at: foundAt, notes };
+  const payload = { trip_id: tripId, country, item_name: itemName, price, currency, found_at: foundAt, notes, image_path: tempShoppingImagePath || null };
   beginLoading();
   try{
     if(editingShoppingItemId){
@@ -3927,6 +4036,7 @@ async function saveShoppingItem(tripId){
       const idx = (trip.shoppingItems||[]).findIndex(i=>i.id===editingShoppingItemId);
       if(idx>-1) trip.shoppingItems[idx] = dbShoppingItemToItem(row);
       editingShoppingItemId = null;
+      tempShoppingImagePath = null;
       renderShoppingListModal(tripId);
       showToast('Item updated');
     } else {
@@ -3934,6 +4044,7 @@ async function saveShoppingItem(tripId){
       if(error){ alert('Could not add item: '+error.message); return; }
       trip.shoppingItems = trip.shoppingItems || [];
       trip.shoppingItems.push(dbShoppingItemToItem(row));
+      tempShoppingImagePath = null;
       renderShoppingListModal(tripId);
       showToast('Item added');
     }
@@ -3969,12 +4080,14 @@ function showDeleteShoppingConfirm(e, tripId, itemId){
   row.appendChild(box);
 }
 async function deleteShoppingItem(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && (trip.shoppingItems||[]).find(i=>i.id===itemId);
   beginLoading();
   try{
     try{ await sb.from('shopping_items').delete().eq('id', itemId); }catch(e){}
-    const trip = getTrip(tripId);
+    if(item && item.imagePath){ try{ await sb.storage.from('attachments').remove([item.imagePath]); }catch(e){} }
     if(trip) trip.shoppingItems = (trip.shoppingItems||[]).filter(i=>i.id!==itemId);
-    if(editingShoppingItemId===itemId) editingShoppingItemId=null;
+    if(editingShoppingItemId===itemId){ editingShoppingItemId=null; tempShoppingImagePath=null; }
     showToast('Item deleted');
   } finally {
     endLoading();
