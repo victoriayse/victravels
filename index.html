@@ -218,6 +218,8 @@
   }
   .flight-name{font-weight:600;font-size:13.5px;}
   .flight-meta{font-size:12px;color:var(--text-muted);margin-top:1px;}
+  .flight-icon.icon-alert{background:var(--warning-light);color:var(--warning);}
+  .booking-windows-card{border-left:4px solid var(--warning);margin-bottom:16px;}
   .expenses-total{font-family:var(--font-serif);font-size:28px;font-weight:600;margin-top:8px;}
   /* "Nearby" / "Nearest Toilets" modal lists */
   .nearby-list{max-height:60vh;overflow-y:auto;}
@@ -928,6 +930,7 @@ function dbActivityToItem(a, fileRows){
     icon: a.icon || '',
     iconImagePath: a.icon_image_path || null,
     status: a.status,
+    bookingOpensDate: a.booking_opens_date || '',
     bookedBy: a.booked_by || '',
     name: a.name,
     costTotal: Number(a.cost_total) || 0,
@@ -1030,6 +1033,20 @@ async function autofillFromMapsLink(url){
     const guessed = guessTypeFromPlaceName(placeName);
     if(guessed) typeInput.value = guessed;
   }
+}
+// Add/Edit Activity form: typing a lead time (days before the visit) computes and fills in
+// the Booking Opens date from the activity's own Date field, so a reservation that's known to
+// open "3 weeks before" doesn't need the exact date worked out by hand. The field stays a
+// normal, directly-editable date input either way — this is just a convenience calculator.
+function autofillBookingOpensFromLead(){
+  const leadEl = document.getElementById('item-bookinglead-input');
+  const opensEl = document.getElementById('item-bookingopens-input');
+  const dateStartEl = document.getElementById('item-date-start-input');
+  if(!leadEl || !opensEl || !dateStartEl) return;
+  const lead = parseInt(leadEl.value, 10);
+  const dateStart = dateStartEl.value;
+  if(!lead || lead<=0 || !dateStart) return;
+  opensEl.value = addDays(dateStart, -lead);
 }
 function guessTypeFromPlaceName(name){
   const s = name.toLowerCase();
@@ -1917,6 +1934,7 @@ function renderHome(){
         ${trips.map(t=>`<option value="${t.id}" ${t.id===trip.id?'selected':''}>${escapeHtml(t.name)}</option>`).join('')}
       </select>
     </div>
+    ${renderBookingWindowsCard()}
     ${renderCurrencyConverterCard()}
     <div class="home-grid">
       ${renderCountdownCard(trip)}
@@ -1933,6 +1951,45 @@ function renderHome(){
   `;
 }
 
+// Spans ALL trips (unlike every other Home card, which is scoped to the trip picked in the
+// dropdown) — a booking window opening for a different trip shouldn't get missed just because
+// that trip isn't the one currently selected. Renders nothing at all when there's nothing to
+// show, so it never sits on Home as an empty/useless card.
+function renderBookingWindowsCard(){
+  const t = todayStr();
+  const rows = [];
+  data.trips.forEach(trip=>{
+    (trip.items||[]).forEach(item=>{
+      if(item.isDuplicate || item.isPoi) return;
+      if(item.status !== 'To Book') return;
+      if(!item.bookingOpensDate) return;
+      rows.push({ trip, item, isOpen: item.bookingOpensDate <= t });
+    });
+  });
+  if(!rows.length) return '';
+  rows.sort((a,b)=>{
+    if(a.isOpen !== b.isOpen) return a.isOpen ? -1 : 1;
+    return a.item.bookingOpensDate.localeCompare(b.item.bookingOpensDate);
+  });
+  return `
+    <div class="card booking-windows-card">
+      <div class="section-title">🔔 Booking Windows</div>
+      ${rows.map(({trip,item,isOpen})=>{
+        const metaText = isOpen
+          ? 'Booking is open — go book it!'
+          : `Opens ${fmtDateShort(item.bookingOpensDate)} · in ${daysBetween(t,item.bookingOpensDate)} day${daysBetween(t,item.bookingOpensDate)===1?'':'s'}`;
+        return `
+        <div class="flight-row" onclick="ui.homeTripId='${trip.id}';ui.detailTripId='${trip.id}';ui.view='tripDetail';render();openItemDetailModal('${trip.id}','${item.id}')">
+          <span class="flight-icon ${isOpen?'icon-alert':''}">${isOpen?'🔓':'🔔'}</span>
+          <div style="flex:1;min-width:0;">
+            <div class="flight-name">${escapeHtml(item.name||'Untitled')}</div>
+            <div class="flight-meta">${escapeHtml(trip.name)} · ${metaText}</div>
+          </div>
+          ${isOpen? '<span class="status-badge status-ToBook">Book now</span>' : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
 function renderCountdownCard(trip){
   const t = todayStr();
   let num='', sub='';
@@ -2959,6 +3016,19 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     </div>
     <div class="field-row">
       <div class="field">
+        <label class="field-label">Booking Opens <span style="font-weight:400;">(optional)</span></label>
+        <input type="date" id="item-bookingopens-input" value="${item&&item.bookingOpensDate?item.bookingOpensDate:''}">
+      </div>
+      <div class="field">
+        <label class="field-label">…or lead time <span style="font-weight:400;">(days before)</span></label>
+        <input type="number" min="1" step="1" id="item-bookinglead-input" placeholder="e.g. 21" oninput="autofillBookingOpensFromLead()">
+      </div>
+    </div>
+    <div class="field">
+      <span class="muted-note">For a reservation that can't be booked yet (e.g. opens 2–3 weeks before visiting) — set the date its window opens, or fill in the lead time and it's calculated from the Date above. Shows as a reminder on Home while Status is "To Book".</span>
+    </div>
+    <div class="field-row">
+      <div class="field">
         <label class="field-label">Time</label>
         <input type="time" id="item-time-start-input" value="${item&&item.timeStart?item.timeStart:''}">
       </div>
@@ -3176,6 +3246,7 @@ async function saveItem(tripId, itemId){
     type: document.getElementById('item-type-input').value,
     icon: document.getElementById('item-icon-input').value || null,
     status: document.getElementById('item-status-input').value,
+    booking_opens_date: document.getElementById('item-bookingopens-input').value || null,
     booked_by: document.getElementById('item-bookedby-input').value || null,
     name,
     cost_total: parseFloat(document.getElementById('item-cost-total-input').value) || 0,
@@ -3235,7 +3306,7 @@ async function saveItem(tripId, itemId){
 
     const localItem = {
       id: savedId,
-      type: payload.type, icon: payload.icon || '', status: payload.status, bookedBy: payload.booked_by || '',
+      type: payload.type, icon: payload.icon || '', status: payload.status, bookingOpensDate: payload.booking_opens_date || '', bookedBy: payload.booked_by || '',
       name: payload.name, costTotal: payload.cost_total, costPerPax: payload.cost_per_pax,
       dateStart: payload.date_start || '', dateEnd: payload.date_end || '',
       timeStart: payload.time_start || '', timeEnd: payload.time_end || '',
