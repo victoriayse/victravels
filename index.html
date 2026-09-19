@@ -867,6 +867,7 @@ let ui = {
   expensesModalBookedBy: 'all',
   expenseCategoryFilter: 'all',
   expenseDayFilter: 'all',
+  shoppingCountryFilter: 'all',
 };
 // Remembers which page (and which trip/day/filters) was open so a refresh lands back
 // where you were instead of resetting to Home.
@@ -905,19 +906,22 @@ async function loadAllData(){
   if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
 
   const tripIds = tripRows.map(t=>t.id);
-  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [];
+  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [];
   if(tripIds.length){
-    const [actRes, taskRes, expRes] = await Promise.all([
+    const [actRes, taskRes, expRes, shopRes] = await Promise.all([
       sb.from('activities').select('*').in('trip_id', tripIds).order('sort_order', { ascending: true }),
       sb.from('tasks').select('*').in('trip_id', tripIds).order('created_at', { ascending: true }),
       sb.from('expenses').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
+      sb.from('shopping_items').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
     ]);
     if(actRes.error) alert('Could not load activities: '+actRes.error.message);
     if(taskRes.error) alert('Could not load tasks: '+taskRes.error.message);
     if(expRes.error) alert('Could not load expenses: '+expRes.error.message);
+    if(shopRes.error) alert('Could not load shopping lists: '+shopRes.error.message);
     activityRows = actRes.data || [];
     taskRows = taskRes.data || [];
     expenseRows = expRes.data || [];
+    shoppingRows = shopRes.data || [];
     const activityIds = activityRows.map(a=>a.id);
     if(activityIds.length){
       const filesRes = await sb.from('activity_files').select('*').in('activity_id', activityIds);
@@ -938,7 +942,16 @@ async function loadAllData(){
     items: activityRows.filter(a=>a.trip_id===t.id).map(a=>dbActivityToItem(a, fileRows)),
     tasks: taskRows.filter(tk=>tk.trip_id===t.id).map(tk=>({ id: tk.id, text: tk.text, done: tk.done })),
     expenses: expenseRows.filter(e=>e.trip_id===t.id).map(dbExpenseToItem),
+    shoppingItems: shoppingRows.filter(s=>s.trip_id===t.id).map(dbShoppingItemToItem),
   }));
+}
+function dbShoppingItemToItem(s){
+  return {
+    id: s.id, tripId: s.trip_id, country: s.country || '', itemName: s.item_name || '',
+    price: Number(s.price) || 0, currency: s.currency==='EUR' ? 'EUR' : 'SGD',
+    foundAt: s.found_at || '', notes: s.notes || '', isBought: !!s.is_bought,
+    createdAt: s.created_at || '',
+  };
 }
 function dbExpenseToItem(e){
   return {
@@ -2438,6 +2451,7 @@ function renderTripDetail(){
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">💰 Trip Expenses</button>
         <button class="btn btn-sm" onclick="openExpensesModal('${trip.id}')">Expenses</button>
+        <button class="btn btn-sm" onclick="openShoppingList('${trip.id}')">🛍️ Shopping List</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
     </div>
@@ -3757,6 +3771,215 @@ function renderTripExpensesChart(tripId){
     data:{ labels, datasets:[{ data: labels.map(l=>byType[l]), backgroundColor: labels.map(l=>TYPE_COLORS[l]||'#999'), borderWidth:0 }] },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:11} } } }, cutout:'65%' }
   });
+}
+
+/* ============ SHOPPING LIST (per country, per trip) ============
+   For things worth buying in a specific place — "get this in Venice", "look out for that in
+   Paris" — tracked separately from booked-activity costs and the ad-hoc Trip Expenses log.
+   Prices follow the same EUR/SGD pattern as activity costs (see toSgd/costHtml). */
+let editingShoppingItemId = null;
+function openShoppingList(tripId){
+  ui.detailTripId = tripId;
+  editingShoppingItemId = null;
+  modalPreventOutsideClose = true;
+  renderShoppingListModal(tripId);
+}
+function renderShoppingListModal(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const countries = trip.countries || [];
+  const filterCountry = ui.shoppingCountryFilter || 'all';
+  const all = (trip.shoppingItems||[]).slice().sort((a,b)=>
+    (a.isBought===b.isBought ? 0 : (a.isBought ? 1 : -1)) || (b.createdAt||'').localeCompare(a.createdAt||''));
+  const filtered = filterCountry==='all' ? all : all.filter(i=>i.country===filterCountry);
+  const editing = editingShoppingItemId ? (trip.shoppingItems||[]).find(i=>i.id===editingShoppingItemId) : null;
+  const groups = groupShoppingByCountry(filtered);
+
+  const html = `
+    <div class="modal-header">
+      <h3>Shopping List — ${escapeHtml(trip.name)}</h3>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+
+    <div class="card" id="shopping-form-card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">${editing? 'Edit Item' : 'Add Item'}</div>
+      <div class="field">
+        <label class="field-label">Item</label>
+        <input type="text" id="shopping-name-input" placeholder="e.g. Murano glass necklace" value="${editing?escapeHtml(editing.itemName):''}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Country</label>
+          <select id="shopping-country-input">
+            ${countries.length
+              ? countries.map(c=>`<option value="${escapeHtml(c)}" ${(editing? editing.country===c : (filterCountry!=='all' && filterCountry===c))?'selected':''}>${escapeHtml(c)}</option>`).join('')
+              : `<option value="">—</option>`}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Price</label>
+          <input type="number" min="0" step="0.01" id="shopping-price-input" placeholder="0.00" value="${editing&&editing.price?editing.price:''}">
+        </div>
+        <div class="field" style="flex:0.6;">
+          <label class="field-label">Currency</label>
+          <select id="shopping-currency-input">
+            <option value="SGD" ${(!editing||editing.currency!=='EUR')?'selected':''}>SGD</option>
+            <option value="EUR" ${editing&&editing.currency==='EUR'?'selected':''}>EUR</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Where to find it <span style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="shopping-foundat-input" placeholder="e.g. Rialto Market, Murano island" value="${editing&&editing.foundAt?escapeHtml(editing.foundAt):''}">
+      </div>
+      <div class="field">
+        <label class="field-label">Notes <span style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="shopping-notes-input" placeholder="e.g. Get the blue one, compare prices first" value="${editing&&editing.notes?escapeHtml(editing.notes):''}">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveShoppingItem('${trip.id}')">${editing? 'Save Changes' : '+ Add Item'}</button>
+        ${editing? `<button class="btn" onclick="cancelEditShoppingItem('${trip.id}')">Cancel</button>` : ''}
+      </div>
+    </div>
+
+    ${countries.length>1 ? `
+    <div class="filter-bar">
+      <select class="filter-select" onchange="ui.shoppingCountryFilter=this.value;renderShoppingListModal('${trip.id}');">
+        <option value="all" ${filterCountry==='all'?'selected':''}>All Countries</option>
+        ${countries.map(c=>`<option value="${escapeHtml(c)}" ${filterCountry===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+      </select>
+    </div>` : ''}
+
+    <div id="shopping-list">
+      ${groups.length===0 ? '<div class="empty-state"><span class="emoji">🛍️</span><p>No shopping list items yet.</p></div>' : groups.map(g=>renderShoppingGroupHtml(g, trip)).join('')}
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  `;
+  openModal(html, true);
+}
+function groupShoppingByCountry(list){
+  const byCountry = {};
+  const order = [];
+  list.forEach(i=>{
+    const key = i.country || 'No country set';
+    if(!byCountry[key]){ byCountry[key]=[]; order.push(key); }
+    byCountry[key].push(i);
+  });
+  return order.map(key=>({ country:key, items:byCountry[key], total: byCountry[key].reduce((s,i)=>s+toSgd(i.price,i.currency),0) }));
+}
+function renderShoppingGroupHtml(group, trip){
+  return `
+    <div style="margin-bottom:18px;">
+      <div class="expense-day-header">
+        <span>${escapeHtml(group.country)}</span>
+        <span>${fmtCost(group.total)}</span>
+      </div>
+      ${group.items.map(i=>renderShoppingRow(i, trip)).join('')}
+    </div>`;
+}
+// Each row's checkbox toggles "bought" directly; the rest of the row opens it for editing.
+// Bought items are dimmed and struck-through, and sort to the bottom of their country group.
+function renderShoppingRow(item, trip){
+  const metaBits = [item.foundAt? '📍 '+escapeHtml(item.foundAt):'', item.notes? escapeHtml(item.notes):''].filter(Boolean).join(' · ');
+  return `<div class="card expense-row" id="shopping-row-${item.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;${item.isBought?'opacity:0.55;':''}">
+    <input type="checkbox" ${item.isBought?'checked':''} onclick="event.stopPropagation();toggleShoppingBought('${trip.id}','${item.id}')" style="flex-shrink:0;width:18px;height:18px;cursor:pointer;">
+    <div style="flex:1;min-width:0;cursor:pointer;" onclick="startEditShoppingItem('${trip.id}','${item.id}')">
+      <div style="font-weight:600;${item.isBought?'text-decoration:line-through;':''}">${escapeHtml(item.itemName||'Untitled')}</div>
+      ${Number(item.price)>0? `<div>${costHtml(item.price, item.currency)}</div>` : ''}
+      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
+    </div>
+    <button class="btn btn-sm" onclick="event.stopPropagation();startEditShoppingItem('${trip.id}','${item.id}')" title="Edit">✏️</button>
+    <button class="btn btn-sm" onclick="showDeleteShoppingConfirm(event,'${trip.id}','${item.id}')" title="Delete">✕</button>
+  </div>`;
+}
+function startEditShoppingItem(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && (trip.shoppingItems||[]).find(i=>i.id===itemId);
+  if(!item) return;
+  editingShoppingItemId = itemId;
+  renderShoppingListModal(tripId);
+  const formEl = document.getElementById('shopping-form-card');
+  if(formEl && formEl.scrollIntoView) formEl.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function cancelEditShoppingItem(tripId){
+  editingShoppingItemId = null;
+  renderShoppingListModal(tripId);
+}
+async function saveShoppingItem(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const itemName = document.getElementById('shopping-name-input').value.trim();
+  if(!itemName){ alert('Please enter an item name.'); return; }
+  const country = document.getElementById('shopping-country-input').value || null;
+  const price = parseFloat(document.getElementById('shopping-price-input').value) || 0;
+  const currency = document.getElementById('shopping-currency-input').value === 'EUR' ? 'EUR' : 'SGD';
+  const foundAt = document.getElementById('shopping-foundat-input').value.trim() || null;
+  const notes = document.getElementById('shopping-notes-input').value.trim() || null;
+  const payload = { trip_id: tripId, country, item_name: itemName, price, currency, found_at: foundAt, notes };
+  beginLoading();
+  try{
+    if(editingShoppingItemId){
+      const { data: row, error } = await sb.from('shopping_items').update(payload).eq('id', editingShoppingItemId).select().single();
+      if(error){ alert('Could not update item: '+error.message); return; }
+      const idx = (trip.shoppingItems||[]).findIndex(i=>i.id===editingShoppingItemId);
+      if(idx>-1) trip.shoppingItems[idx] = dbShoppingItemToItem(row);
+      editingShoppingItemId = null;
+      renderShoppingListModal(tripId);
+      showToast('Item updated');
+    } else {
+      const { data: row, error } = await sb.from('shopping_items').insert(payload).select().single();
+      if(error){ alert('Could not add item: '+error.message); return; }
+      trip.shoppingItems = trip.shoppingItems || [];
+      trip.shoppingItems.push(dbShoppingItemToItem(row));
+      renderShoppingListModal(tripId);
+      showToast('Item added');
+    }
+  } finally {
+    endLoading();
+  }
+}
+async function toggleShoppingBought(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && (trip.shoppingItems||[]).find(i=>i.id===itemId);
+  if(!item) return;
+  const newBought = !item.isBought;
+  const { error } = await sb.from('shopping_items').update({ is_bought: newBought }).eq('id', itemId);
+  if(error){ alert('Could not update item: '+error.message); return; }
+  item.isBought = newBought;
+  renderShoppingListModal(tripId);
+}
+function showDeleteShoppingConfirm(e, tripId, itemId){
+  e.stopPropagation();
+  const row = document.getElementById('shopping-row-'+itemId);
+  if(!row) return;
+  const existing = row.querySelector('.confirm-box');
+  if(existing){ existing.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'popover confirm-box';
+  box.innerHTML = `
+    <p>Delete this item? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm" style="flex:1;" onclick="event.stopPropagation();this.closest('.confirm-box').remove()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="event.stopPropagation();deleteShoppingItem('${tripId}','${itemId}')">Delete</button>
+    </div>`;
+  box.addEventListener('click', e2=>e2.stopPropagation());
+  row.appendChild(box);
+}
+async function deleteShoppingItem(tripId, itemId){
+  beginLoading();
+  try{
+    try{ await sb.from('shopping_items').delete().eq('id', itemId); }catch(e){}
+    const trip = getTrip(tripId);
+    if(trip) trip.shoppingItems = (trip.shoppingItems||[]).filter(i=>i.id!==itemId);
+    if(editingShoppingItemId===itemId) editingShoppingItemId=null;
+    showToast('Item deleted');
+  } finally {
+    endLoading();
+  }
+  renderShoppingListModal(tripId);
 }
 
 /* ============ TODAY ============ */
