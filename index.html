@@ -3948,16 +3948,18 @@ function renderShoppingGroupHtml(group, trip){
       ${group.items.map(i=>renderShoppingRow(i, trip)).join('')}
     </div>`;
 }
-// Each row's checkbox toggles "bought" directly; the rest of the row opens it for editing.
-// Bought items are dimmed and struck-through, and sort to the bottom of their country group.
+// Tapping anywhere on the row (including its thumbnail) opens the read-only detail popup —
+// matching how an activity card behaves. The checkbox, edit and delete controls each stop
+// propagation so they act independently of that. Bought items are dimmed and struck-through,
+// and sort to the bottom of their country group.
 function renderShoppingRow(item, trip){
   const metaBits = [item.foundAt? '📍 '+escapeHtml(item.foundAt):'', item.notes? escapeHtml(item.notes):''].filter(Boolean).join(' · ');
-  return `<div class="card expense-row" id="shopping-row-${item.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;${item.isBought?'opacity:0.55;':''}">
+  return `<div class="card expense-row" id="shopping-row-${item.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;cursor:pointer;${item.isBought?'opacity:0.55;':''}" onclick="openShoppingItemDetailModal('${trip.id}','${item.id}')">
     <input type="checkbox" ${item.isBought?'checked':''} onclick="event.stopPropagation();toggleShoppingBought('${trip.id}','${item.id}')" style="flex-shrink:0;width:18px;height:18px;cursor:pointer;">
     ${item.imagePath
-      ? `<a href="${coverPublicUrl(item.imagePath)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"><img src="${coverPublicUrl(item.imagePath)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0;"></a>`
+      ? `<img src="${coverPublicUrl(item.imagePath)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);flex-shrink:0;">`
       : ''}
-    <div style="flex:1;min-width:0;cursor:pointer;" onclick="startEditShoppingItem('${trip.id}','${item.id}')">
+    <div style="flex:1;min-width:0;">
       <div style="font-weight:600;${item.isBought?'text-decoration:line-through;':''}">${escapeHtml(item.itemName||'Untitled')}</div>
       ${Number(item.price)>0? `<div>${costHtml(item.price, item.currency)}</div>` : ''}
       ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
@@ -3965,6 +3967,33 @@ function renderShoppingRow(item, trip){
     <button class="btn btn-sm" onclick="event.stopPropagation();startEditShoppingItem('${trip.id}','${item.id}')" title="Edit">✏️</button>
     <button class="btn btn-sm" onclick="showDeleteShoppingConfirm(event,'${trip.id}','${item.id}')" title="Delete">✕</button>
   </div>`;
+}
+// Read-only detail popup for a shopping item — same visual language as an activity's detail
+// modal (hero photo, meta-pill row, notes), swapped into the same modal overlay the Shopping
+// List already occupies rather than opened as a separate stacked modal. "Close"/"X" return to
+// the list rather than exiting entirely, since that's the page you were just on.
+function openShoppingItemDetailModal(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && (trip.shoppingItems||[]).find(i=>i.id===itemId);
+  if(!trip || !item) return;
+  const html = `
+    <div class="modal-header">
+      <h3>${escapeHtml(item.itemName||'Untitled')}</h3>
+      <button class="modal-close" onclick="renderShoppingListModal('${trip.id}')">&times;</button>
+    </div>
+    ${item.imagePath? `<div class="detail-gallery-frame"><img src="${coverPublicUrl(item.imagePath)}" class="detail-gallery-img" alt=""></div>` : ''}
+    <div class="detail-meta-row">
+      <span class="status-badge ${item.isBought?'status-Booked':'status-ToBook'}">${item.isBought?'Bought':'Not bought yet'}</span>
+      ${item.country? `<span class="detail-type-pill">🌍 ${escapeHtml(item.country)}</span>` : ''}
+      ${Number(item.price)>0? `<span style="display:inline-block;">💰 ${costHtml(item.price, item.currency)}</span>` : ''}
+    </div>
+    ${item.foundAt? `<div class="detail-links-row"><span class="nav-btn" style="cursor:default;">📍 ${escapeHtml(item.foundAt)}</span></div>` : ''}
+    ${item.notes? `<div class="detail-notes">${escapeHtml(item.notes)}</div>` : ''}
+    <div class="modal-footer">
+      <button class="btn" onclick="startEditShoppingItem('${trip.id}','${item.id}')">✏️ Edit</button>
+      <button class="btn btn-primary" onclick="renderShoppingListModal('${trip.id}')">Close</button>
+    </div>`;
+  openModal(html, true);
 }
 function startEditShoppingItem(tripId, itemId){
   const trip = getTrip(tripId);
