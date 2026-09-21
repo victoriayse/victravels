@@ -1610,7 +1610,12 @@ function afterRender(){
     initTripMap(lastTripDetailTrip, lastTripDetailItems, (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
   if(ui.view==='poi' && lastTripDetailTrip && document.getElementById('trip-map')){
-    initTripMap(lastTripDetailTrip, [], (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
+    // The Places of Interest page used to map only the stars, leaving the day pins off —
+    // pass every real activity too (unfiltered by day, since this page has no day selector
+    // of its own) so both show together, same as the day pins + star pins already combine
+    // on the main trip map.
+    const allActivities = (lastTripDetailTrip.items||[]).filter(i=>!i.isPoi);
+    initTripMap(lastTripDetailTrip, allActivities, lastTripDetailItems);
   }
   if(ui.view==='tripDetail' && lastTripDetailTrip){
     loadDistanceBadges(lastTripDetailTrip, lastTripDetailItems);
@@ -2606,7 +2611,7 @@ function renderPlacesOfInterest(){
       </div>
     </div>
 
-    ${(trip.items||[]).some(i=>i.isPoi)? `
+    ${(trip.items||[]).length? `
     <div class="card" style="margin-bottom:22px;padding:18px;">
       <div class="section-title">Map</div>
       <div id="trip-map" style="height:360px;border-radius:12px;overflow:hidden;background:var(--bg-soft);"></div>
