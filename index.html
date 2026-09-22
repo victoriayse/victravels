@@ -3232,6 +3232,68 @@ function sanitizeFileName(name){
   const safeExt = ext.replace(/[^a-zA-Z0-9.]+/g, '');
   return safeBase + safeExt;
 }
+/* ---- Photo compression (cover images, receipts, shopping item photos) ----
+   Custom icons (handleIconUpload above) are exempt — those are small glyphs sized for
+   200×200 display and kept as PNG for transparency, not photos re-encoded for byte size. */
+function loadImageEl(file){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the image file.')); };
+    img.src = url;
+  });
+}
+function encodeJpeg(img, width, height, quality){
+  return new Promise(resolve=>{
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    // JPEG has no alpha channel — flatten onto white first so a transparent source (e.g. a
+    // screenshot) doesn't turn solid black once re-encoded.
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+    canvas.toBlob(blob=>resolve(blob), 'image/jpeg', quality);
+  });
+}
+// Re-encodes a photo as JPEG, stepping quality down and — once quality bottoms out —
+// dimensions down, until it fits under maxBytes (default 60KB) or hits a sensible floor
+// (35% quality, 480px on the long side). A phone photo can be 5-10MB straight out of the
+// camera; this keeps Storage usage and page load small without a visible quality cliff for
+// the vast majority of photos, which converge in 1-3 passes.
+async function compressImageFile(file, maxBytes){
+  maxBytes = maxBytes || 60*1024;
+  const img = await loadImageEl(file);
+  let width = img.width, height = img.height;
+  const MAX_DIM = 1600;
+  if(Math.max(width, height) > MAX_DIM){
+    const scale = MAX_DIM / Math.max(width, height);
+    width = Math.round(width*scale); height = Math.round(height*scale);
+  }
+  let quality = 0.85;
+  let blob = await encodeJpeg(img, width, height, quality);
+  let guard = 0;
+  while(blob.size > maxBytes && guard < 10){
+    guard++;
+    if(quality > 0.35){
+      quality = Math.max(0.35, quality - 0.1);
+    } else if(Math.max(width, height) > 480){
+      width = Math.round(width*0.85); height = Math.round(height*0.85);
+    } else {
+      break; // hit both floors — accept the smallest size we could reach
+    }
+    blob = await encodeJpeg(img, width, height, quality);
+  }
+  return blob;
+}
+// Swaps whatever extension the original file had for .jpg, since a compressed upload is
+// always re-encoded as JPEG regardless of what it started as (PNG, HEIC, etc.) — keeps the
+// stored file's extension honest about its actual content.
+function withJpgExt(name){
+  const base = sanitizeFileName(name).replace(/\.[a-zA-Z0-9]+$/, '') || 'photo';
+  return base + '.jpg';
+}
 async function handleCoverSelect(e){
   const files = Array.from(e.target.files);
   e.target.value = '';
@@ -3239,8 +3301,10 @@ async function handleCoverSelect(e){
   beginLoading();
   try{
     for(const file of files){
-      const path = `shared/${currentDraftId}/cover_${Date.now()}_${sanitizeFileName(file.name)}`;
-      const { error } = await sb.storage.from('attachments').upload(path, file);
+      let uploadBlob = file, uploadName = sanitizeFileName(file.name);
+      try{ uploadBlob = await compressImageFile(file); uploadName = withJpgExt(file.name); }catch(compressErr){}
+      const path = `shared/${currentDraftId}/cover_${Date.now()}_${uploadName}`;
+      const { error } = await sb.storage.from('attachments').upload(path, uploadBlob);
       if(error){ alert('Image upload failed for '+file.name+': '+error.message); continue; }
       tempCoverPaths.push(path);
       renderCoverPreview();
@@ -3338,8 +3402,14 @@ async function handleFileSelect(e){
     const uploadingEntry = { name: f.name, storagePath: null, uploading: true };
     tempFiles.push(uploadingEntry);
     renderFileChips();
-    const path = `shared/${currentDraftId}/${Date.now()}_${sanitizeFileName(f.name)}`;
-    const { error } = await sb.storage.from('attachments').upload(path, f);
+    // This picker accepts any file type (PDFs, docs, etc. alongside images), so only run
+    // photos through compression — a non-image file is uploaded untouched.
+    let uploadBlob = f, uploadName = sanitizeFileName(f.name);
+    if(f.type && f.type.startsWith('image/')){
+      try{ uploadBlob = await compressImageFile(f); uploadName = withJpgExt(f.name); }catch(compressErr){}
+    }
+    const path = `shared/${currentDraftId}/${Date.now()}_${uploadName}`;
+    const { error } = await sb.storage.from('attachments').upload(path, uploadBlob);
     if(error){
       alert('Upload failed for '+f.name+': '+error.message);
       tempFiles.splice(tempFiles.indexOf(uploadingEntry), 1);
@@ -3738,8 +3808,10 @@ async function handleReceiptUpload(e){
   if(!file) return;
   beginLoading();
   try{
-  const path = `shared/expenses/receipt_${Date.now()}_${sanitizeFileName(file.name)}`;
-  const { error } = await sb.storage.from('attachments').upload(path, file);
+  let uploadBlob = file, uploadName = sanitizeFileName(file.name);
+  try{ uploadBlob = await compressImageFile(file); uploadName = withJpgExt(file.name); }catch(compressErr){}
+  const path = `shared/expenses/receipt_${Date.now()}_${uploadName}`;
+  const { error } = await sb.storage.from('attachments').upload(path, uploadBlob);
   if(error){ alert('Receipt upload failed: '+error.message); return; }
   tempReceiptPath = path;
   refreshExpenseReceiptField();
@@ -4079,8 +4151,10 @@ async function handleShoppingImageUpload(e){
   if(!file) return;
   beginLoading();
   try{
-    const path = `shared/shopping/item_${Date.now()}_${sanitizeFileName(file.name)}`;
-    const { error } = await sb.storage.from('attachments').upload(path, file);
+    let uploadBlob = file, uploadName = sanitizeFileName(file.name);
+    try{ uploadBlob = await compressImageFile(file); uploadName = withJpgExt(file.name); }catch(compressErr){}
+    const path = `shared/shopping/item_${Date.now()}_${uploadName}`;
+    const { error } = await sb.storage.from('attachments').upload(path, uploadBlob);
     if(error){ alert('Photo upload failed: '+error.message); return; }
     tempShoppingImagePath = path;
     refreshShoppingImageField();
