@@ -1783,7 +1783,10 @@ let placeAutocompleteInstance = null;
 async function initPlacesAutocomplete(){
   let googleMaps;
   try { googleMaps = await loadGoogleMaps(); } catch(e){ return; }
-  const input = document.getElementById('item-name-input');
+  // Bound to the dedicated Location field, not Name — selecting a place here only ever sets
+  // the map pin (and fills in a blank Maps Link), and deliberately never touches whatever
+  // you've typed as the activity's display Name.
+  const input = document.getElementById('item-location-input');
   if(!input || !googleMaps.places) return; // modal may have closed while Maps was loading
   placeAutocompleteInstance = new googleMaps.places.Autocomplete(input, { fields: ['place_id','name','geometry','url'] });
   placeAutocompleteInstance.addListener('place_changed', ()=>{
@@ -1791,8 +1794,6 @@ async function initPlacesAutocomplete(){
     if(!place || !place.geometry || !place.geometry.location) return;
     tempPlaceId = place.place_id || null;
     tempPlaceLatLng = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
-    const nameInput = document.getElementById('item-name-input');
-    if(nameInput && place.name) nameInput.value = place.name;
     const mapsInput = document.getElementById('item-maps-input');
     if(mapsInput && !mapsInput.value.trim() && place.url) mapsInput.value = place.url;
   });
@@ -3169,7 +3170,12 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     <div class="field">
       <label class="field-label">Name</label>
       <input type="text" id="item-name-input" autocomplete="off" value="${item?escapeHtml(item.name):''}" placeholder="e.g. Flight to Tokyo">
-      <span class="muted-note">Start typing to pick a real place — fills in its map pin (and Street View/photo) automatically.</span>
+      <span class="muted-note">Whatever you want to call it on the card — editing this never changes the map pin below.</span>
+    </div>
+    <div class="field">
+      <label class="field-label">Location <span style="font-weight:400;">(optional)</span></label>
+      <input type="text" id="item-location-input" autocomplete="off" placeholder="Search for a place to set its map pin…">
+      <span class="muted-note">Search and select a real place to set its exact map pin (and Street View/photo). ${item&&item.lat!=null&&item.lng!=null?'Leave blank to keep the current pin.':'Leave blank to skip a map pin for now.'}</span>
     </div>
     <div class="field">
       <label class="field-label">Booked by</label>
@@ -4044,6 +4050,52 @@ function getFilteredFinanceItems(trip){
   });
   return items;
 }
+// Normalizes booked-activity cost items AND manual adjustments (from "Add Expenses") into one
+// shape so they can share the same itemized table below the balance/adjustment cards, rather
+// than adjustments only living in their own little list — that's the one place to see and
+// sort everything that feeds into the balance.
+function getFinanceTableRows(trip){
+  const itemRows = getFilteredFinanceItems(trip).map(i=>({
+    kind:'item', id:i.id, name:i.name||'Untitled', type:i.type, date:i.dateStart||'',
+    bookedBy:i.bookedBy||'', status:i.status, costSgd: toSgd(i.costTotal,i.currency),
+  }));
+  // Adjustments have no Type/Status of their own, so they only show up when those filters
+  // are at "All" — narrowing to a specific type or status is asking for booked-activity rows.
+  let adjRows = [];
+  if(ui.financeTypeFilter==='all' && ui.financeStatusFilter==='all'){
+    adjRows = (trip.adjustments||[]).filter(a=>{
+      if(ui.financeBookedByFilter!=='all'){
+        if(ui.financeBookedByFilter==='__unassigned__' || ui.financeBookedByFilter==='Both') return false;
+        if(a.person!==ui.financeBookedByFilter) return false;
+      }
+      const q = (ui.financeSearchQuery||'').trim().toLowerCase();
+      if(q){
+        const text = ((a.note||'')+' '+a.person+' manual adjustment expense').toLowerCase();
+        if(!text.includes(q)) return false;
+      }
+      return true;
+    }).map(a=>({
+      kind:'adjustment', id:a.id, name: a.note ? a.note : 'Manual Adjustment', type:'Adjustment',
+      date:a.date||'', bookedBy:a.person, status:'', costSgd: toSgd(a.amount,a.currency),
+    }));
+  }
+  const combined = itemRows.concat(adjRows);
+  const key = ui.financeSortKey || 'date';
+  const dir = ui.financeSortDir==='desc' ? -1 : 1;
+  combined.sort((a,b)=>{
+    let av, bv;
+    if(key==='cost'){ av=a.costSgd; bv=b.costSgd; }
+    else if(key==='name'){ av=a.name.toLowerCase(); bv=b.name.toLowerCase(); }
+    else if(key==='type'){ av=a.type||''; bv=b.type||''; }
+    else if(key==='bookedBy'){ av=a.bookedBy||''; bv=b.bookedBy||''; }
+    else if(key==='status'){ av=a.status||''; bv=b.status||''; }
+    else { av=a.date||''; bv=b.date||''; }
+    if(av<bv) return -1*dir;
+    if(av>bv) return 1*dir;
+    return 0;
+  });
+  return combined;
+}
 function financeSortToggle(key){
   if(ui.financeSortKey===key){
     ui.financeSortDir = ui.financeSortDir==='asc' ? 'desc' : 'asc';
@@ -4062,9 +4114,9 @@ function renderFinance(){
   if(!trip){ ui.view='trips'; return renderTrips(); }
   const balance = computeFinanceBalance(trip);
   const rows = getFilteredFinanceItems(trip);
-  const filteredTotal = rows.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
+  const tableRows = getFinanceTableRows(trip);
+  const filteredTotal = tableRows.reduce((s,r)=>s+r.costSgd,0);
   const settlements = (trip.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
-  const adjustments = (trip.adjustments||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
 
   let bannerClass, bannerText;
   if(Math.abs(balance.finalBalance) < 0.01){
@@ -4138,8 +4190,8 @@ function renderFinance(){
     </div>
 
     <div class="card" style="margin-bottom:22px;padding:18px;">
-      <div class="section-title">Manual Adjustments</div>
-      <p class="muted-note" style="margin-top:0;">For an extra amount one of you paid or is owed outside of any booked activity (e.g. cash spent off-app) — this changes the balance above, the same way an activity cost would.</p>
+      <div class="section-title">Add Expenses</div>
+      <p class="muted-note" style="margin-top:0;">For an extra amount one of you paid or is owed outside of any booked activity (e.g. cash spent off-app, or a balance carried over from before this trip) — this changes the balance above, the same way an activity cost would. Logged entries show up in the table below, alongside booked activities.</p>
       <div class="field-row">
         <div class="field">
           <label class="field-label">Person</label>
@@ -4170,8 +4222,6 @@ function renderFinance(){
         </div>
       </div>
       <button class="btn btn-primary" onclick="saveAdjustment('${trip.id}')">+ Log Adjustment</button>
-
-      ${adjustments.length? `<div style="margin-top:18px;">${adjustments.map(a=>renderAdjustmentRow(a, trip)).join('')}</div>` : '<p class="muted-note" style="margin-top:14px;">No manual adjustments logged yet.</p>'}
     </div>
 
     <div class="card" style="margin-bottom:22px;padding:18px;">
@@ -4213,14 +4263,27 @@ function renderFinance(){
             </tr>
           </thead>
           <tbody>
-            ${rows.length===0 ? `<tr><td colspan="6" class="muted-note" style="text-align:center;padding:24px;">No matching items.</td></tr>` : rows.map(item=>`
-            <tr onclick="ui.view='tripDetail';ui.detailTripId='${trip.id}';render();openItemDetailModal('${trip.id}','${item.id}')" style="cursor:pointer;">
-              <td>${escapeHtml(item.name||'Untitled')}</td>
-              <td>${escapeHtml(item.type)}</td>
-              <td style="white-space:nowrap;">${item.dateStart? fmtDateShort(item.dateStart) : '—'}</td>
-              <td>${item.bookedBy? escapeHtml(item.bookedBy) : '<span class="muted-note">—</span>'}</td>
-              <td><span class="status-badge ${statusClass(item.status)}">${item.status}</span></td>
-              <td style="text-align:right;white-space:nowrap;">${fmtCost(toSgd(item.costTotal,item.currency))}</td>
+            ${tableRows.length===0 ? `<tr><td colspan="6" class="muted-note" style="text-align:center;padding:24px;">No matching items.</td></tr>` : tableRows.map(r=> r.kind==='adjustment' ? `
+            <tr>
+              <td>🧾 ${escapeHtml(r.name)}</td>
+              <td><span class="muted-note">Adjustment</span></td>
+              <td style="white-space:nowrap;">${r.date? fmtDateShort(r.date) : '—'}</td>
+              <td>${escapeHtml(r.bookedBy)}</td>
+              <td><span class="muted-note">—</span></td>
+              <td style="text-align:right;white-space:nowrap;">
+                <span id="adjustment-row-${r.id}" style="position:relative;display:inline-flex;align-items:center;gap:6px;">
+                  ${fmtCost(r.costSgd)}
+                  <button class="btn btn-sm" onclick="showDeleteAdjustmentConfirm(event,'${trip.id}','${r.id}')" title="Delete" style="padding:1px 6px;font-size:11px;">✕</button>
+                </span>
+              </td>
+            </tr>` : `
+            <tr onclick="ui.view='tripDetail';ui.detailTripId='${trip.id}';render();openItemDetailModal('${trip.id}','${r.id}')" style="cursor:pointer;">
+              <td>${escapeHtml(r.name||'Untitled')}</td>
+              <td>${escapeHtml(r.type)}</td>
+              <td style="white-space:nowrap;">${r.date? fmtDateShort(r.date) : '—'}</td>
+              <td>${r.bookedBy? escapeHtml(r.bookedBy) : '<span class="muted-note">—</span>'}</td>
+              <td><span class="status-badge ${statusClass(r.status)}">${r.status}</span></td>
+              <td style="text-align:right;white-space:nowrap;">${fmtCost(r.costSgd)}</td>
             </tr>`).join('')}
           </tbody>
           <tfoot>
@@ -4311,17 +4374,6 @@ async function deleteSettlement(tripId, settlementId){
     endLoading();
   }
   render();
-}
-function renderAdjustmentRow(a, trip){
-  const metaBits = [a.date? fmtDateShort(a.date):'', a.note? escapeHtml(a.note):''].filter(Boolean).join(' · ');
-  return `<div class="card expense-row" id="adjustment-row-${a.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
-    <div style="font-size:20px;flex-shrink:0;">➕</div>
-    <div style="flex:1;min-width:0;">
-      <div style="font-weight:600;">${escapeHtml(a.person)}: +${costHtml(a.amount, a.currency)}</div>
-      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
-    </div>
-    <button class="btn btn-sm" onclick="showDeleteAdjustmentConfirm(event,'${trip.id}','${a.id}')" title="Delete">✕</button>
-  </div>`;
 }
 async function saveAdjustment(tripId){
   const trip = getTrip(tripId);
