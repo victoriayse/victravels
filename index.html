@@ -947,25 +947,28 @@ async function loadAllData(){
   if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
 
   const tripIds = tripRows.map(t=>t.id);
-  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [], settlementRows = [];
+  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [], settlementRows = [], adjustmentRows = [];
   if(tripIds.length){
-    const [actRes, taskRes, expRes, shopRes, settleRes] = await Promise.all([
+    const [actRes, taskRes, expRes, shopRes, settleRes, adjRes] = await Promise.all([
       sb.from('activities').select('*').in('trip_id', tripIds).order('sort_order', { ascending: true }),
       sb.from('tasks').select('*').in('trip_id', tripIds).order('created_at', { ascending: true }),
       sb.from('expenses').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
       sb.from('shopping_items').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
       sb.from('settlements').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
+      sb.from('adjustments').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
     ]);
     if(actRes.error) alert('Could not load activities: '+actRes.error.message);
     if(taskRes.error) alert('Could not load tasks: '+taskRes.error.message);
     if(expRes.error) alert('Could not load expenses: '+expRes.error.message);
     if(shopRes.error) alert('Could not load shopping lists: '+shopRes.error.message);
     if(settleRes.error) alert('Could not load settlements: '+settleRes.error.message);
+    if(adjRes.error) alert('Could not load adjustments: '+adjRes.error.message);
     activityRows = actRes.data || [];
     taskRows = taskRes.data || [];
     expenseRows = expRes.data || [];
     shoppingRows = shopRes.data || [];
     settlementRows = settleRes.data || [];
+    adjustmentRows = adjRes.data || [];
     const activityIds = activityRows.map(a=>a.id);
     if(activityIds.length){
       const filesRes = await sb.from('activity_files').select('*').in('activity_id', activityIds);
@@ -988,6 +991,7 @@ async function loadAllData(){
     expenses: expenseRows.filter(e=>e.trip_id===t.id).map(dbExpenseToItem),
     shoppingItems: shoppingRows.filter(s=>s.trip_id===t.id).map(dbShoppingItemToItem),
     settlements: settlementRows.filter(s=>s.trip_id===t.id).map(dbSettlementToItem),
+    adjustments: adjustmentRows.filter(a=>a.trip_id===t.id).map(dbAdjustmentToItem),
   }));
 }
 function dbSettlementToItem(s){
@@ -995,6 +999,13 @@ function dbSettlementToItem(s){
     id: s.id, tripId: s.trip_id, fromPerson: s.from_person, toPerson: s.to_person,
     amount: Number(s.amount) || 0, currency: s.currency==='EUR' ? 'EUR' : 'SGD',
     date: s.date || '', note: s.note || '', createdAt: s.created_at || '',
+  };
+}
+function dbAdjustmentToItem(a){
+  return {
+    id: a.id, tripId: a.trip_id, person: a.person,
+    amount: Number(a.amount) || 0, currency: a.currency==='EUR' ? 'EUR' : 'SGD',
+    date: a.date || '', note: a.note || '', createdAt: a.created_at || '',
   };
 }
 function dbShoppingItemToItem(s){
@@ -3560,13 +3571,17 @@ async function saveItem(tripId, itemId){
     is_poi: document.getElementById('item-poi-input').checked,
     place_id: tempPlaceId,
   };
-  // Re-geocode if the location-relevant fields changed, so stale coordinates don't stick around.
-  // A fresh Places Autocomplete selection already carries exact coordinates, so it skips the
-  // geocoding pass entirely rather than clearing lat/lng and waiting for the map to fill them in.
+  // Re-geocode only if the maps link itself changed — that's the actual source of the pin.
+  // The Name field is deliberately NOT part of this check: pasting a Maps link often only
+  // yields a raw address (e.g. "Karlsplatz 21", a tour's pickup point) rather than a
+  // meaningful name, and renaming it afterwards to something you'll actually recognize
+  // shouldn't blow away the coordinates you already have. A fresh Places Autocomplete
+  // selection already carries exact coordinates, so it skips the geocoding pass entirely
+  // rather than clearing lat/lng and waiting for the map to fill them in.
   let coordsCleared = false;
   if(tempPlaceLatLng){
     payload.lat = tempPlaceLatLng.lat; payload.lng = tempPlaceLatLng.lng;
-  } else if(existingItem && (existingItem.mapsLink !== (payload.maps_link||'') || existingItem.name !== payload.name)){
+  } else if(existingItem && existingItem.mapsLink !== (payload.maps_link||'')){
     payload.lat = null; payload.lng = null; coordsCleared = true;
   }
   // Images removed during this edit (still present in the original set, no longer in the
@@ -3977,6 +3992,17 @@ function computeFinanceBalance(trip){
     else if(i.bookedBy==='Both'){ totalVictoria += sgd/2; totalWengSeng += sgd/2; }
     else { unassignedTotal += sgd; unassignedCount++; }
   });
+  // Manual adjustments — an extra amount one person paid/is owed outside of any booked
+  // activity (e.g. cash spent off-app). Unlike a settlement, this changes the underlying
+  // imbalance itself, exactly as if it were another activity cost attributed to that person.
+  let adjustmentsVictoria = 0, adjustmentsWengSeng = 0;
+  (trip.adjustments || []).forEach(a=>{
+    const sgd = toSgd(a.amount, a.currency);
+    if(a.person==='Victoria') adjustmentsVictoria += sgd;
+    else if(a.person==='Weng Seng') adjustmentsWengSeng += sgd;
+  });
+  totalVictoria += adjustmentsVictoria;
+  totalWengSeng += adjustmentsWengSeng;
   const combined = totalVictoria + totalWengSeng;
   const fairShare = combined / 2;
   const rawBalance = totalVictoria - fairShare; // positive: Victoria fronted more than her fair share
@@ -4038,6 +4064,7 @@ function renderFinance(){
   const rows = getFilteredFinanceItems(trip);
   const filteredTotal = rows.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   const settlements = (trip.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+  const adjustments = (trip.adjustments||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
 
   let bannerClass, bannerText;
   if(Math.abs(balance.finalBalance) < 0.01){
@@ -4108,6 +4135,43 @@ function renderFinance(){
       <button class="btn btn-primary" onclick="saveSettlement('${trip.id}')">+ Log Payment</button>
 
       ${settlements.length? `<div style="margin-top:18px;">${settlements.map(s=>renderSettlementRow(s, trip)).join('')}</div>` : '<p class="muted-note" style="margin-top:14px;">No payments logged yet.</p>'}
+    </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Manual Adjustments</div>
+      <p class="muted-note" style="margin-top:0;">For an extra amount one of you paid or is owed outside of any booked activity (e.g. cash spent off-app) — this changes the balance above, the same way an activity cost would.</p>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Person</label>
+          <select id="adjustment-person-input">
+            ${BOOKED_BY.map(b=>`<option value="${b}">${b}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Amount</label>
+          <input type="number" min="0" step="0.01" id="adjustment-amount-input" placeholder="0.00">
+        </div>
+        <div class="field" style="flex:0.6;">
+          <label class="field-label">Currency</label>
+          <select id="adjustment-currency-input">
+            <option value="SGD" selected>SGD</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Date <span style="font-weight:400;">(optional)</span></label>
+          <input type="date" id="adjustment-date-input" value="${todayStr()}">
+        </div>
+        <div class="field" style="flex:2;">
+          <label class="field-label">Note <span style="font-weight:400;">(optional)</span></label>
+          <input type="text" id="adjustment-note-input" placeholder="e.g. Paid cash for groceries, not logged as an activity">
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveAdjustment('${trip.id}')">+ Log Adjustment</button>
+
+      ${adjustments.length? `<div style="margin-top:18px;">${adjustments.map(a=>renderAdjustmentRow(a, trip)).join('')}</div>` : '<p class="muted-note" style="margin-top:14px;">No manual adjustments logged yet.</p>'}
     </div>
 
     <div class="card" style="margin-bottom:22px;padding:18px;">
@@ -4243,6 +4307,68 @@ async function deleteSettlement(tripId, settlementId){
     const trip = getTrip(tripId);
     if(trip) trip.settlements = (trip.settlements||[]).filter(s=>s.id!==settlementId);
     showToast('Payment record deleted');
+  } finally {
+    endLoading();
+  }
+  render();
+}
+function renderAdjustmentRow(a, trip){
+  const metaBits = [a.date? fmtDateShort(a.date):'', a.note? escapeHtml(a.note):''].filter(Boolean).join(' · ');
+  return `<div class="card expense-row" id="adjustment-row-${a.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+    <div style="font-size:20px;flex-shrink:0;">➕</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;">${escapeHtml(a.person)}: +${costHtml(a.amount, a.currency)}</div>
+      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
+    </div>
+    <button class="btn btn-sm" onclick="showDeleteAdjustmentConfirm(event,'${trip.id}','${a.id}')" title="Delete">✕</button>
+  </div>`;
+}
+async function saveAdjustment(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const person = document.getElementById('adjustment-person-input').value;
+  const amount = parseFloat(document.getElementById('adjustment-amount-input').value);
+  if(!amount || amount<=0){ alert('Enter an amount greater than 0.'); return; }
+  const currency = document.getElementById('adjustment-currency-input').value==='EUR' ? 'EUR' : 'SGD';
+  const date = document.getElementById('adjustment-date-input').value || null;
+  const note = document.getElementById('adjustment-note-input').value.trim() || null;
+  const payload = { trip_id: tripId, person, amount, currency, date, note };
+  beginLoading();
+  try{
+    const { data: row, error } = await sb.from('adjustments').insert(payload).select().single();
+    if(error){ alert('Could not log adjustment: '+error.message); return; }
+    trip.adjustments = trip.adjustments || [];
+    trip.adjustments.push(dbAdjustmentToItem(row));
+    showToast('Adjustment logged');
+    render();
+  } finally {
+    endLoading();
+  }
+}
+function showDeleteAdjustmentConfirm(e, tripId, adjustmentId){
+  e.stopPropagation();
+  const row = document.getElementById('adjustment-row-'+adjustmentId);
+  if(!row) return;
+  const existing = row.querySelector('.confirm-box');
+  if(existing){ existing.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'popover confirm-box';
+  box.innerHTML = `
+    <p>Delete this adjustment? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm" style="flex:1;" onclick="event.stopPropagation();this.closest('.confirm-box').remove()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="event.stopPropagation();deleteAdjustment('${tripId}','${adjustmentId}')">Delete</button>
+    </div>`;
+  box.addEventListener('click', e2=>e2.stopPropagation());
+  row.appendChild(box);
+}
+async function deleteAdjustment(tripId, adjustmentId){
+  beginLoading();
+  try{
+    try{ await sb.from('adjustments').delete().eq('id', adjustmentId); }catch(e){}
+    const trip = getTrip(tripId);
+    if(trip) trip.adjustments = (trip.adjustments||[]).filter(a=>a.id!==adjustmentId);
+    showToast('Adjustment deleted');
   } finally {
     endLoading();
   }
