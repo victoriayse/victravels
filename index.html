@@ -221,6 +221,21 @@
   .flight-icon.icon-alert{background:var(--warning-light);color:var(--warning);}
   .booking-windows-card{border-left:4px solid var(--warning);margin-bottom:16px;}
   .expenses-total{font-family:var(--font-serif);font-size:28px;font-weight:600;margin-top:8px;}
+  /* FINANCE DASHBOARD */
+  .balance-banner{font-size:16px;font-weight:600;padding:12px 16px;border-radius:10px;text-align:center;}
+  .balance-banner.owed{background:var(--success-light);color:var(--success);}
+  .balance-banner.owes{background:var(--warning-light);color:var(--warning);}
+  .balance-banner.settled{background:var(--bg-soft);color:var(--text-muted);}
+  .fin-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .fin-table th{
+    text-align:left;padding:10px 14px;background:var(--bg-soft);color:var(--text-muted);
+    font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+    cursor:pointer;white-space:nowrap;user-select:none;
+  }
+  .fin-table th:hover{color:var(--text);}
+  .fin-table td{padding:10px 14px;border-top:1px solid var(--border);}
+  .fin-table tbody tr:hover{background:var(--bg-soft);}
+  .fin-table tfoot td{padding:12px 14px;border-top:2px solid var(--border-strong);}
   /* "Nearby" / "Nearest Toilets" modal lists */
   .nearby-list{max-height:60vh;overflow-y:auto;}
   .nearby-row{
@@ -884,11 +899,15 @@ let ui = {
   searchQuery: '',
   todayShowAll: false,
   homeExpensesFilter: 'all',
-  expensesModalType: 'all',
-  expensesModalBookedBy: 'all',
   expenseCategoryFilter: 'all',
   expenseDayFilter: 'all',
   shoppingCountryFilter: 'all',
+  financeTypeFilter: 'all',
+  financeStatusFilter: 'all',
+  financeBookedByFilter: 'all',
+  financeSearchQuery: '',
+  financeSortKey: 'date',
+  financeSortDir: 'asc',
 };
 // Remembers which page (and which trip/day/filters) was open so a refresh lands back
 // where you were instead of resetting to Home.
@@ -928,22 +947,25 @@ async function loadAllData(){
   if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
 
   const tripIds = tripRows.map(t=>t.id);
-  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [];
+  let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [], settlementRows = [];
   if(tripIds.length){
-    const [actRes, taskRes, expRes, shopRes] = await Promise.all([
+    const [actRes, taskRes, expRes, shopRes, settleRes] = await Promise.all([
       sb.from('activities').select('*').in('trip_id', tripIds).order('sort_order', { ascending: true }),
       sb.from('tasks').select('*').in('trip_id', tripIds).order('created_at', { ascending: true }),
       sb.from('expenses').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
       sb.from('shopping_items').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
+      sb.from('settlements').select('*').in('trip_id', tripIds).order('created_at', { ascending: false }),
     ]);
     if(actRes.error) alert('Could not load activities: '+actRes.error.message);
     if(taskRes.error) alert('Could not load tasks: '+taskRes.error.message);
     if(expRes.error) alert('Could not load expenses: '+expRes.error.message);
     if(shopRes.error) alert('Could not load shopping lists: '+shopRes.error.message);
+    if(settleRes.error) alert('Could not load settlements: '+settleRes.error.message);
     activityRows = actRes.data || [];
     taskRows = taskRes.data || [];
     expenseRows = expRes.data || [];
     shoppingRows = shopRes.data || [];
+    settlementRows = settleRes.data || [];
     const activityIds = activityRows.map(a=>a.id);
     if(activityIds.length){
       const filesRes = await sb.from('activity_files').select('*').in('activity_id', activityIds);
@@ -965,7 +987,15 @@ async function loadAllData(){
     tasks: taskRows.filter(tk=>tk.trip_id===t.id).map(tk=>({ id: tk.id, text: tk.text, done: tk.done })),
     expenses: expenseRows.filter(e=>e.trip_id===t.id).map(dbExpenseToItem),
     shoppingItems: shoppingRows.filter(s=>s.trip_id===t.id).map(dbShoppingItemToItem),
+    settlements: settlementRows.filter(s=>s.trip_id===t.id).map(dbSettlementToItem),
   }));
+}
+function dbSettlementToItem(s){
+  return {
+    id: s.id, tripId: s.trip_id, fromPerson: s.from_person, toPerson: s.to_person,
+    amount: Number(s.amount) || 0, currency: s.currency==='EUR' ? 'EUR' : 'SGD',
+    date: s.date || '', note: s.note || '', createdAt: s.created_at || '',
+  };
 }
 function dbShoppingItemToItem(s){
   return {
@@ -1590,13 +1620,14 @@ function setView(view){
 function render(){
   saveUiState();
   document.querySelectorAll('#main-nav button').forEach(b=>{
-    b.classList.toggle('active', b.dataset.view===ui.view || ((ui.view==='tripDetail'||ui.view==='poi') && b.dataset.view==='trips'));
+    b.classList.toggle('active', b.dataset.view===ui.view || ((ui.view==='tripDetail'||ui.view==='poi'||ui.view==='finance') && b.dataset.view==='trips'));
   });
   const app = document.getElementById('app');
   if(ui.view==='home') app.innerHTML = renderHome();
   else if(ui.view==='trips') app.innerHTML = renderTrips();
   else if(ui.view==='tripDetail') app.innerHTML = renderTripDetail();
   else if(ui.view==='poi') app.innerHTML = renderPlacesOfInterest();
+  else if(ui.view==='finance') app.innerHTML = renderFinance();
   else if(ui.view==='today') app.innerHTML = renderToday();
   afterRender();
 }
@@ -1606,6 +1637,7 @@ function afterRender(){
   // cost on tripDetail/poi/trips too, so the rate needs to be available there as well.
   ensureCurrencyRate();
   if(ui.view==='home'){ renderExpensesChart(); }
+  if(ui.view==='finance'){ renderFinanceChart(); }
   if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
     initTripMap(lastTripDetailTrip, lastTripDetailItems, (lastTripDetailTrip.items||[]).filter(i=>i.isPoi));
   }
@@ -2532,7 +2564,7 @@ function renderTripDetail(){
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">💰 Trip Expenses</button>
-        <button class="btn btn-sm" onclick="openExpensesModal('${trip.id}')">Expenses</button>
+        <button class="btn btn-sm" onclick="ui.detailTripId='${trip.id}';ui.view='finance';render();">📊 Finance</button>
         <button class="btn btn-sm" onclick="openShoppingList('${trip.id}')">🛍️ Shopping List</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
@@ -3900,67 +3932,296 @@ async function deleteExpense(tripId, expenseId){
   renderTripExpensesModal(tripId);
 }
 
-/* ---- Trip Expenses Modal ---- */
-let tripExpensesChart = null;
-function openExpensesModal(tripId){
-  renderExpensesModal(tripId);
+/* ============ FINANCE DASHBOARD ============
+   Full-page view (not a modal — the itemized table with filters/sort/search needs real
+   room) covering booked-activity costs only, deliberately separate from the ad-hoc Trip
+   Expenses cash log above. Two parts: a Victoria-vs-Weng-Seng balance built from each
+   item's "Booked by" field (assumes an even 50/50 split of everything booked), and a
+   logged settlement history ("Weng Seng Paid Victoria" or the reverse) that nets against
+   that balance — covers the real scenario of a partial reimbursement transfer after the
+   trip, not just a single lump-sum settle-up. */
+let financeChart = null;
+// Items with a cost but no "Booked by" set can't be attributed to either person, so they're
+// deliberately excluded from the balance (rather than guessed at) and called out separately
+// so Victoria knows which ones to go fill in for an accurate number.
+function computeFinanceBalance(trip){
+  const items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0);
+  let totalVictoria = 0, totalWengSeng = 0, unassignedTotal = 0, unassignedCount = 0;
+  items.forEach(i=>{
+    const sgd = toSgd(i.costTotal, i.currency);
+    if(i.bookedBy==='Victoria') totalVictoria += sgd;
+    else if(i.bookedBy==='Weng Seng') totalWengSeng += sgd;
+    else { unassignedTotal += sgd; unassignedCount++; }
+  });
+  const combined = totalVictoria + totalWengSeng;
+  const fairShare = combined / 2;
+  const rawBalance = totalVictoria - fairShare; // positive: Victoria fronted more than her fair share
+  const settlements = trip.settlements || [];
+  let settledToVictoria = 0, settledFromVictoria = 0;
+  settlements.forEach(s=>{
+    const sgd = toSgd(s.amount, s.currency);
+    if(s.toPerson==='Victoria') settledToVictoria += sgd;
+    if(s.fromPerson==='Victoria') settledFromVictoria += sgd;
+  });
+  const netSettlement = settledToVictoria - settledFromVictoria; // net money Victoria has actually received back
+  const finalBalance = rawBalance - netSettlement; // positive: Weng Seng still owes Victoria this much
+  return { totalVictoria, totalWengSeng, unassignedTotal, unassignedCount, fairShare, finalBalance };
 }
-function renderExpensesModal(tripId){
-  const trip = getTrip(tripId);
-  if(!trip) return;
-  const filterType = ui.expensesModalType;
-  const filterBookedBy = ui.expensesModalBookedBy;
-  const items = (trip.items||[]).filter(i=> !i.isDuplicate && !i.isPoi && Number(i.costTotal)>0
-    && (filterType==='all' || i.type===filterType)
-    && (filterBookedBy==='all' || i.bookedBy===filterBookedBy));
-  const total = items.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
-  const html = `
-    <div class="modal-header">
-      <h3>Expenses — ${escapeHtml(trip.name)}</h3>
-      <button class="modal-close" onclick="closeModal()">&times;</button>
+function getFilteredFinanceItems(trip){
+  let items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0);
+  if(ui.financeTypeFilter!=='all') items = items.filter(i=>i.type===ui.financeTypeFilter);
+  if(ui.financeStatusFilter!=='all') items = items.filter(i=>i.status===ui.financeStatusFilter);
+  if(ui.financeBookedByFilter!=='all'){
+    items = ui.financeBookedByFilter==='__unassigned__'
+      ? items.filter(i=>!i.bookedBy)
+      : items.filter(i=>i.bookedBy===ui.financeBookedByFilter);
+  }
+  const q = (ui.financeSearchQuery||'').trim().toLowerCase();
+  if(q) items = items.filter(i=>itemSearchText(i).includes(q));
+  const key = ui.financeSortKey || 'date';
+  const dir = ui.financeSortDir==='desc' ? -1 : 1;
+  items = items.slice().sort((a,b)=>{
+    let av, bv;
+    if(key==='cost'){ av = toSgd(a.costTotal,a.currency); bv = toSgd(b.costTotal,b.currency); }
+    else if(key==='name'){ av = (a.name||'').toLowerCase(); bv = (b.name||'').toLowerCase(); }
+    else if(key==='type'){ av = a.type||''; bv = b.type||''; }
+    else if(key==='bookedBy'){ av = a.bookedBy||''; bv = b.bookedBy||''; }
+    else if(key==='status'){ av = a.status||''; bv = b.status||''; }
+    else { av = a.dateStart||''; bv = b.dateStart||''; }
+    if(av<bv) return -1*dir;
+    if(av>bv) return 1*dir;
+    return 0;
+  });
+  return items;
+}
+function financeSortToggle(key){
+  if(ui.financeSortKey===key){
+    ui.financeSortDir = ui.financeSortDir==='asc' ? 'desc' : 'asc';
+  } else {
+    ui.financeSortKey = key;
+    ui.financeSortDir = key==='cost' ? 'desc' : 'asc'; // biggest cost first is usually what you want
+  }
+  render();
+}
+function financeSortArrow(key){
+  if(ui.financeSortKey!==key) return '';
+  return ui.financeSortDir==='desc' ? ' ▼' : ' ▲';
+}
+function renderFinance(){
+  const trip = getTrip(ui.detailTripId);
+  if(!trip){ ui.view='trips'; return renderTrips(); }
+  const balance = computeFinanceBalance(trip);
+  const rows = getFilteredFinanceItems(trip);
+  const filteredTotal = rows.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
+  const settlements = (trip.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (b.createdAt||'').localeCompare(a.createdAt||''));
+
+  let bannerClass, bannerText;
+  if(Math.abs(balance.finalBalance) < 0.01){
+    bannerClass = 'settled'; bannerText = '🎉 All settled up.';
+  } else if(balance.finalBalance > 0){
+    bannerClass = 'owed'; bannerText = `Weng Seng owes Victoria <strong>${fmtCost(balance.finalBalance)}</strong>`;
+  } else {
+    bannerClass = 'owes'; bannerText = `Victoria owes Weng Seng <strong>${fmtCost(-balance.finalBalance)}</strong>`;
+  }
+
+  return `
+    <button class="back-link" style="margin-top:24px;" onclick="ui.view='tripDetail';render();">&larr; Back to ${escapeHtml(trip.name)}</button>
+    <div class="trip-detail-header">
+      <div>
+        <h1 class="page-title" style="margin:0 0 4px;">Finance</h1>
+        <div class="countdown-sub">${escapeHtml(trip.name)} · booked activity costs</div>
+      </div>
     </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Balance</div>
+      <div class="overview-stats" style="margin-bottom:14px;">
+        <div><div class="stat-num">${fmtCost(balance.totalVictoria)}</div><div class="stat-label">VICTORIA PAID</div></div>
+        <div><div class="stat-num">${fmtCost(balance.totalWengSeng)}</div><div class="stat-label">WENG SENG PAID</div></div>
+        <div><div class="stat-num">${fmtCost(balance.fairShare)}</div><div class="stat-label">FAIR SHARE EACH</div></div>
+      </div>
+      <div class="balance-banner ${bannerClass}">${bannerText}</div>
+      ${balance.unassignedCount>0? `<div class="muted-note" style="margin-top:10px;">${balance.unassignedCount} item${balance.unassignedCount===1?'':'s'} with a cost (${fmtCost(balance.unassignedTotal)}) ${balance.unassignedCount===1?"has":"have"} no "Booked by" set, so ${balance.unassignedCount===1?"it isn't":"they aren't"} included in the balance above.</div>` : ''}
+    </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Settle Up</div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">From</label>
+          <select id="settlement-from-input">
+            ${BOOKED_BY.map(b=>`<option value="${b}" ${b==='Weng Seng'?'selected':''}>${b}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">To</label>
+          <select id="settlement-to-input">
+            ${BOOKED_BY.map(b=>`<option value="${b}" ${b==='Victoria'?'selected':''}>${b}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label">Amount</label>
+          <input type="number" min="0" step="0.01" id="settlement-amount-input" placeholder="0.00">
+        </div>
+        <div class="field" style="flex:0.6;">
+          <label class="field-label">Currency</label>
+          <select id="settlement-currency-input">
+            <option value="SGD" selected>SGD</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Date <span style="font-weight:400;">(optional)</span></label>
+          <input type="date" id="settlement-date-input" value="${todayStr()}">
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Note <span style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="settlement-note-input" placeholder="e.g. PayNow transfer for hotel">
+      </div>
+      <button class="btn btn-primary" onclick="saveSettlement('${trip.id}')">+ Log Payment</button>
+
+      ${settlements.length? `<div style="margin-top:18px;">${settlements.map(s=>renderSettlementRow(s, trip)).join('')}</div>` : '<p class="muted-note" style="margin-top:14px;">No payments logged yet.</p>'}
+    </div>
+
+    <div class="card" style="margin-bottom:22px;padding:18px;">
+      <div class="section-title">Cost Breakdown</div>
+      ${rows.length? `<div style="height:200px;position:relative;"><canvas id="finance-chart"></canvas></div>` : '<p class="muted-note">No matching items.</p>'}
+    </div>
+
     <div class="filter-bar">
-      <select class="filter-select" onchange="ui.expensesModalType=this.value;renderExpensesModal('${tripId}');">
-        <option value="all" ${filterType==='all'?'selected':''}>All Types</option>
-        ${TYPES.map(t=>`<option value="${t}" ${filterType===t?'selected':''}>${t}</option>`).join('')}
+      <select class="filter-select" onchange="ui.financeTypeFilter=this.value;render();">
+        <option value="all" ${ui.financeTypeFilter==='all'?'selected':''}>All Types</option>
+        ${TYPES.map(t=>`<option value="${t}" ${ui.financeTypeFilter===t?'selected':''}>${t}</option>`).join('')}
       </select>
-      <select class="filter-select" onchange="ui.expensesModalBookedBy=this.value;renderExpensesModal('${tripId}');">
-        <option value="all" ${filterBookedBy==='all'?'selected':''}>Booked by: All</option>
-        ${BOOKED_BY.map(b=>`<option value="${b}" ${filterBookedBy===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+      <select class="filter-select" onchange="ui.financeStatusFilter=this.value;render();">
+        <option value="all" ${ui.financeStatusFilter==='all'?'selected':''}>All Statuses</option>
+        ${STATUSES.map(s=>`<option value="${s}" ${ui.financeStatusFilter===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.financeBookedByFilter=this.value;render();">
+        <option value="all" ${ui.financeBookedByFilter==='all'?'selected':''}>Booked by: All</option>
+        ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.financeBookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+        <option value="__unassigned__" ${ui.financeBookedByFilter==='__unassigned__'?'selected':''}>Booked by: Unassigned</option>
       </select>
     </div>
-    ${items.length===0 ? '<p class="muted-note">No matching expenses.</p>' : `
-      <div style="height:220px;position:relative;"><canvas id="trip-expenses-chart"></canvas></div>
-      <div class="expenses-total">${fmtCost(total)}</div>
-      <div class="countdown-sub">total across ${items.length} item${items.length===1?'':'s'} · shown as total cost (not per pax)</div>
-    `}
-    <div class="modal-footer">
-      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    <div class="search-bar">
+      <input type="text" class="search-input" placeholder="🔍 Search by activity name…" value="${escapeHtml(ui.financeSearchQuery||'')}" oninput="ui.financeSearchQuery=this.value;render();">
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="overflow-x:auto;">
+        <table class="fin-table">
+          <thead>
+            <tr>
+              <th onclick="financeSortToggle('name')">Item${financeSortArrow('name')}</th>
+              <th onclick="financeSortToggle('type')">Type${financeSortArrow('type')}</th>
+              <th onclick="financeSortToggle('date')">Date${financeSortArrow('date')}</th>
+              <th onclick="financeSortToggle('bookedBy')">Booked By${financeSortArrow('bookedBy')}</th>
+              <th onclick="financeSortToggle('status')">Status${financeSortArrow('status')}</th>
+              <th onclick="financeSortToggle('cost')" style="text-align:right;">Cost (SGD)${financeSortArrow('cost')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length===0 ? `<tr><td colspan="6" class="muted-note" style="text-align:center;padding:24px;">No matching items.</td></tr>` : rows.map(item=>`
+            <tr onclick="ui.view='tripDetail';ui.detailTripId='${trip.id}';render();openItemDetailModal('${trip.id}','${item.id}')" style="cursor:pointer;">
+              <td>${escapeHtml(item.name||'Untitled')}</td>
+              <td>${escapeHtml(item.type)}</td>
+              <td style="white-space:nowrap;">${item.dateStart? fmtDateShort(item.dateStart) : '—'}</td>
+              <td>${item.bookedBy? escapeHtml(item.bookedBy) : '<span class="muted-note">—</span>'}</td>
+              <td><span class="status-badge ${statusClass(item.status)}">${item.status}</span></td>
+              <td style="text-align:right;white-space:nowrap;">${fmtCost(toSgd(item.costTotal,item.currency))}</td>
+            </tr>`).join('')}
+          </tbody>
+          <tfoot>
+            <tr><td colspan="5" style="text-align:right;font-weight:700;">Total</td><td style="text-align:right;font-weight:700;white-space:nowrap;">${fmtCost(filteredTotal)}</td></tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   `;
-  openModal(html, true);
-  renderTripExpensesChart(tripId);
 }
-function renderTripExpensesChart(tripId){
-  const canvas = document.getElementById('trip-expenses-chart');
+function renderFinanceChart(){
+  const canvas = document.getElementById('finance-chart');
   if(!canvas || typeof Chart==='undefined') return;
-  const trip = getTrip(tripId);
+  const trip = getTrip(ui.detailTripId);
   if(!trip) return;
-  const filterType = ui.expensesModalType;
-  const filterBookedBy = ui.expensesModalBookedBy;
+  const items = getFilteredFinanceItems(trip);
   const byType = {};
-  (trip.items||[]).forEach(i=>{
-    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filterType==='all' || i.type===filterType) && (filterBookedBy==='all' || i.bookedBy===filterBookedBy)){
-      byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency);
-    }
-  });
+  items.forEach(i=>{ byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency); });
   const labels = Object.keys(byType);
-  if(tripExpensesChart) tripExpensesChart.destroy();
-  tripExpensesChart = new Chart(canvas, {
+  if(financeChart) financeChart.destroy();
+  if(!labels.length) return;
+  financeChart = new Chart(canvas, {
     type:'doughnut',
     data:{ labels, datasets:[{ data: labels.map(l=>byType[l]), backgroundColor: labels.map(l=>TYPE_COLORS[l]||'#999'), borderWidth:0 }] },
     options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:11} } } }, cutout:'65%' }
   });
+}
+function renderSettlementRow(s, trip){
+  const metaBits = [s.date? fmtDateShort(s.date):'', s.note? escapeHtml(s.note):''].filter(Boolean).join(' · ');
+  return `<div class="card expense-row" id="settlement-row-${s.id}" style="position:relative;margin-bottom:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;">
+    <div style="font-size:20px;flex-shrink:0;">💸</div>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:600;">${escapeHtml(s.fromPerson)} → ${escapeHtml(s.toPerson)}: ${costHtml(s.amount, s.currency)}</div>
+      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
+    </div>
+    <button class="btn btn-sm" onclick="showDeleteSettlementConfirm(event,'${trip.id}','${s.id}')" title="Delete">✕</button>
+  </div>`;
+}
+async function saveSettlement(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const fromPerson = document.getElementById('settlement-from-input').value;
+  const toPerson = document.getElementById('settlement-to-input').value;
+  if(fromPerson===toPerson){ alert('From and To must be different people.'); return; }
+  const amount = parseFloat(document.getElementById('settlement-amount-input').value);
+  if(!amount || amount<=0){ alert('Enter an amount greater than 0.'); return; }
+  const currency = document.getElementById('settlement-currency-input').value==='EUR' ? 'EUR' : 'SGD';
+  const date = document.getElementById('settlement-date-input').value || null;
+  const note = document.getElementById('settlement-note-input').value.trim() || null;
+  const payload = { trip_id: tripId, from_person: fromPerson, to_person: toPerson, amount, currency, date, note };
+  beginLoading();
+  try{
+    const { data: row, error } = await sb.from('settlements').insert(payload).select().single();
+    if(error){ alert('Could not log payment: '+error.message); return; }
+    trip.settlements = trip.settlements || [];
+    trip.settlements.push(dbSettlementToItem(row));
+    showToast('Payment logged');
+    render();
+  } finally {
+    endLoading();
+  }
+}
+function showDeleteSettlementConfirm(e, tripId, settlementId){
+  e.stopPropagation();
+  const row = document.getElementById('settlement-row-'+settlementId);
+  if(!row) return;
+  const existing = row.querySelector('.confirm-box');
+  if(existing){ existing.remove(); return; }
+  const box = document.createElement('div');
+  box.className = 'popover confirm-box';
+  box.innerHTML = `
+    <p>Delete this payment record? This can't be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm" style="flex:1;" onclick="event.stopPropagation();this.closest('.confirm-box').remove()">Cancel</button>
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="event.stopPropagation();deleteSettlement('${tripId}','${settlementId}')">Delete</button>
+    </div>`;
+  box.addEventListener('click', e2=>e2.stopPropagation());
+  row.appendChild(box);
+}
+async function deleteSettlement(tripId, settlementId){
+  beginLoading();
+  try{
+    try{ await sb.from('settlements').delete().eq('id', settlementId); }catch(e){}
+    const trip = getTrip(tripId);
+    if(trip) trip.settlements = (trip.settlements||[]).filter(s=>s.id!==settlementId);
+    showToast('Payment record deleted');
+  } finally {
+    endLoading();
+  }
+  render();
 }
 
 /* ============ SHOPPING LIST (per country, per trip) ============
