@@ -2600,6 +2600,7 @@ function renderTripDetail(){
       <select class="filter-select" onchange="ui.bookedByFilter=this.value;render();">
         <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+        <option value="Both" ${ui.bookedByFilter==='Both'?'selected':''}>Booked by: Both</option>
       </select>
       ${trip.startDate? `<select class="filter-select" onchange="if(this.value)jumpToDateDay('${trip.id}', this.value);" title="Jump to a date">
         <option value="">Jump to date</option>
@@ -2672,6 +2673,7 @@ function renderPlacesOfInterest(){
       <select class="filter-select" onchange="ui.bookedByFilter=this.value;render();">
         <option value="all" ${(ui.bookedByFilter||'all')==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.bookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+        <option value="Both" ${ui.bookedByFilter==='Both'?'selected':''}>Booked by: Both</option>
       </select>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, true)">+ Add Place</button>
     </div>
@@ -3149,10 +3151,12 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
     </div>
     <div class="field">
       <label class="field-label">Booked by</label>
-      <select id="item-bookedby-input">
+      <select id="item-bookedby-input" onchange="document.getElementById('item-bookedby-hint').style.display = this.value==='Both' ? '' : 'none';">
         <option value="" ${item&&!item.bookedBy?'selected':''}>—</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${item&&item.bookedBy===b?'selected':''}>${b}</option>`).join('')}
+        <option value="Both" ${item&&item.bookedBy==='Both'?'selected':''}>Paid by Both</option>
       </select>
+      <span id="item-bookedby-hint" class="muted-note" style="display:${item&&item.bookedBy==='Both'?'':'none'};margin-top:4px;">Split evenly on the Finance balance — each of you is credited half this cost, so it doesn't show as owed either way.</span>
     </div>
     <div class="field-row">
       <div class="field">
@@ -3951,6 +3955,10 @@ function computeFinanceBalance(trip){
     const sgd = toSgd(i.costTotal, i.currency);
     if(i.bookedBy==='Victoria') totalVictoria += sgd;
     else if(i.bookedBy==='Weng Seng') totalWengSeng += sgd;
+    // A "Both" item is credited half its cost to each person — adding the same amount to
+    // both sides leaves the imbalance between them unchanged, which is exactly right: if you
+    // each already paid your own half directly, that item owes nothing either way.
+    else if(i.bookedBy==='Both'){ totalVictoria += sgd/2; totalWengSeng += sgd/2; }
     else { unassignedTotal += sgd; unassignedCount++; }
   });
   const combined = totalVictoria + totalWengSeng;
@@ -4103,6 +4111,7 @@ function renderFinance(){
       <select class="filter-select" onchange="ui.financeBookedByFilter=this.value;render();">
         <option value="all" ${ui.financeBookedByFilter==='all'?'selected':''}>Booked by: All</option>
         ${BOOKED_BY.map(b=>`<option value="${b}" ${ui.financeBookedByFilter===b?'selected':''}>Booked by: ${b}</option>`).join('')}
+        <option value="Both" ${ui.financeBookedByFilter==='Both'?'selected':''}>Booked by: Both</option>
         <option value="__unassigned__" ${ui.financeBookedByFilter==='__unassigned__'?'selected':''}>Booked by: Unassigned</option>
       </select>
     </div>
