@@ -2232,9 +2232,19 @@ function renderTasksCard(trip){
     .filter(i=>i.status==='To Book' && !i.isDuplicate && !i.isPoi)
     .sort(compareItems);
   const empty = manualTasks.length===0 && autoTasks.length===0;
+  // Per-pax total across the still-to-book items — each converted to SGD first, so a mix of
+  // EUR- and SGD-priced bookings still adds up to one figure. Uses each item's own per-pax
+  // cost when set, falling back to its total split across the trip's pax count otherwise.
+  const autoTasksTotalPerPax = autoTasks.reduce((s,item)=>{
+    const perPax = Number(item.costPerPax)>0
+      ? toSgd(item.costPerPax, item.currency)
+      : toSgd(item.costTotal, item.currency) / (trip.pax||1);
+    return s + perPax;
+  }, 0);
   return `
     <div class="card">
       <div class="section-title">Pending Tasks</div>
+      ${autoTasksTotalPerPax>0 ? `<div class="countdown-sub" style="margin-bottom:10px;">To book total: <strong style="color:var(--text);">${fmtCost(autoTasksTotalPerPax)}</strong> / pax</div>` : ''}
       ${empty ? '<p class="muted-note">No tasks yet.</p>' : ''}
       ${autoTasks.map(item=>`
         <div class="task-row">
