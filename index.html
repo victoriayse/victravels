@@ -2981,6 +2981,10 @@ async function duplicateItem(tripId, itemId){
     link: item.link || null, maps_link: item.mapsLink || null,
     card_color: item.cardColor || null, notes: item.notes || '', sort_order: newOrder,
     is_duplicate: false, parent_activity_id: null, is_poi: item.isPoi || false,
+    // Carrying these over is what makes the new card's map pin (and Open Now/photo lookups)
+    // point at the exact same place instead of falling back to a fresh, name-based geocode —
+    // which for a chain store like "Lidl" can land on the wrong branch entirely.
+    place_id: item.placeId || null, lat: item.lat ?? null, lng: item.lng ?? null,
   };
   beginLoading();
   try{
@@ -3026,6 +3030,10 @@ async function reconcileDuplicates(tripId, parentId, basePayload, order){
       link: basePayload.link, maps_link: basePayload.maps_link, card_color: basePayload.card_color,
       notes: basePayload.notes, sort_order: order, is_duplicate: true, parent_activity_id: parentId,
       is_poi: basePayload.is_poi || false, place_id: basePayload.place_id || null,
+      // Same reasoning as duplicateItem above — without these, a continuation row for e.g. a
+      // multi-night stay has to be re-geocoded from scratch and can drift to a different
+      // branch/address than the parent activity it's supposed to mirror.
+      lat: basePayload.lat ?? null, lng: basePayload.lng ?? null,
     }).select().single();
     if(!error) trip.items.push(dbActivityToItem(row, []));
   }
@@ -3071,6 +3079,9 @@ async function moveItemToDate(tripId, itemId){
       name: item.name, cost_total: item.costTotal||0, cost_per_pax: item.costPerPax||0, currency: item.currency||'SGD',
       date_start: newStart, date_end: newEnd, link: item.link||null, maps_link: item.mapsLink||null,
       card_color: item.cardColor||null, notes: item.notes||'', is_poi: item.isPoi||false,
+      // Same fix as duplicateItem/reconcileDuplicates — moving an activity to a new day still
+      // reconciles its continuation rows, which need the parent's exact location carried over.
+      place_id: item.placeId||null, lat: item.lat ?? null, lng: item.lng ?? null,
     }, item.order||0);
     closeModal();
     render();
@@ -3617,6 +3628,11 @@ async function saveItem(tripId, itemId){
       trip.items.push(localItem);
     }
     if(!isEditingDuplicate){
+      // payload.lat/lng are only set above when this save actually touched the location
+      // (a fresh Autocomplete pick, or a cleared/changed maps link) — localItem.lat/lng is
+      // always the authoritative current value, so continuation rows reconcile against that
+      // rather than possibly-undefined fields and drifting to a re-geocoded, wrong location.
+      payload.lat = localItem.lat; payload.lng = localItem.lng;
       await reconcileDuplicates(tripId, savedId, payload, savedOrder);
     }
     closeModal(); render();
