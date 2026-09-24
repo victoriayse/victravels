@@ -1794,9 +1794,20 @@ async function initPlacesAutocomplete(){
     if(!place || !place.geometry || !place.geometry.location) return;
     tempPlaceId = place.place_id || null;
     tempPlaceLatLng = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
+    tempClearLocation = false; // a fresh pick supersedes any pending "clear the pin" request
     const mapsInput = document.getElementById('item-maps-input');
     if(mapsInput && !mapsInput.value.trim() && place.url) mapsInput.value = place.url;
   });
+}
+// "Clear current pin" button next to the Location field — for a card whose map pin turned out
+// to be wrong (e.g. auto-geocoded from a name that isn't a real place) and should just have no
+// pin at all, rather than needing a replacement location picked before it can be saved.
+function clearItemLocation(){
+  tempPlaceId = null;
+  tempPlaceLatLng = null;
+  tempClearLocation = true;
+  const btn = document.getElementById('clear-location-btn');
+  if(btn){ btn.textContent = 'Pin will be cleared on save'; btn.disabled = true; }
 }
 function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
@@ -1967,12 +1978,14 @@ async function initTripMap(trip, dayItems, poiItems){
         if(!coords) placeQuery = extractPlaceNameFromMapsLink(resolved);
       }
     }
-    if(!coords){
-      const q = placeQuery || item.name;
-      if(q){
-        coords = await geocodePlace(q);
-        await new Promise(r=>setTimeout(r,1100)); // respect Nominatim's ~1 req/sec usage policy
-      }
+    // Deliberately NOT falling back to item.name as a geocode query here: Name and Location
+    // are two separate fields now, and a lot of activity names ("Taxi to Airport", "Checkout",
+    // "Buy souvenirs") aren't real places at all — geocoding them against Nominatim can match
+    // some unrelated business anywhere in the world and silently pin a wrong, far-away location.
+    // Only geocode from something that actually came from a maps link/place search.
+    if(!coords && placeQuery){
+      coords = await geocodePlace(placeQuery);
+      await new Promise(r=>setTimeout(r,1100)); // respect Nominatim's ~1 req/sec usage policy
     }
     if(tripMapRenderToken !== myToken) return; // a newer render superseded this one — stop
     if(coords){
@@ -1984,7 +1997,7 @@ async function initTripMap(trip, dayItems, poiItems){
   }
   if(foundAny) fitToMarkers();
   if(statusEl){
-    statusEl.textContent = markers.length ? '' : 'No locations to show yet — add a Google Maps link or a clear place name to your activities.';
+    statusEl.textContent = markers.length ? '' : 'No locations to show yet — add a Google Maps link or search the Location field on your activities.';
   }
 }
 
@@ -2697,19 +2710,30 @@ function renderPlacesOfInterest(){
   `;
 }
 
-// Interleaves a distance-badge placeholder between each pair of consecutive cards (skipped
-// across a Place of Interest, which isn't part of the day's walking sequence). The badges
-// start empty and are filled in afterwards by loadDistanceBadges() once coordinates for
-// both ends are known — keeps the initial render instant, no request-per-render-call.
+// Whether a card represents an actual place at all, as opposed to a plain reminder/note
+// ("Book taxi to airport", "Buy souvenirs") that was never given a Google Maps link or a
+// Location field selection. Those note cards have nothing to put on the map or measure a
+// walking distance to/from, so they're treated as transparent — skipped over — everywhere
+// the app chains cards together by location, rather than breaking that chain in two.
+function cardHasLocation(item){
+  return !item.isPoi && (!!(item.mapsLink && item.mapsLink.trim()) || (item.lat!=null && item.lng!=null));
+}
+// Interleaves a distance-badge placeholder between each pair of consecutive LOCATION cards
+// (skipping over both a Place of Interest, which isn't part of the day's walking sequence,
+// and any plain note card with no location of its own — the badge instead spans straight
+// from the last real place to the next one). The badges start empty and are filled in
+// afterwards by loadDistanceBadges() once coordinates for both ends are known — keeps the
+// initial render instant, no request-per-render-call.
 function renderItemsWithDistanceBadges(items, trip){
   let html = '';
   items.forEach((item, idx)=>{
     html += renderItemCard(item, trip);
-    if(idx < items.length-1){
-      const next = items[idx+1];
-      if(!item.isPoi && !next.isPoi){
-        html += `<div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>`;
-      }
+    if(!cardHasLocation(item)) return;
+    let nextIdx = idx+1;
+    while(nextIdx < items.length && !cardHasLocation(items[nextIdx])) nextIdx++;
+    if(nextIdx < items.length){
+      const next = items[nextIdx];
+      html += `<div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>`;
     }
   });
   return html;
@@ -2759,8 +2783,15 @@ async function loadDistanceBadges(trip, items){
   });
   for(const day of Object.keys(dayGroups)){
     const dayItems = dayGroups[day];
-    for(let idx=0; idx<dayItems.length-1; idx++){
-      const a = dayItems[idx], b = dayItems[idx+1];
+    for(let idx=0; idx<dayItems.length; idx++){
+      const a = dayItems[idx];
+      if(!cardHasLocation(a)) continue;
+      // Mirrors renderItemsWithDistanceBadges' pairing above: skip past any plain note
+      // card (no maps link/location at all) to find the next real place's badge.
+      let nextIdx = idx+1;
+      while(nextIdx<dayItems.length && !cardHasLocation(dayItems[nextIdx])) nextIdx++;
+      if(nextIdx>=dayItems.length) continue;
+      const b = dayItems[nextIdx];
       const el = document.getElementById(`distbadge-${a.id}-${b.id}`);
       if(!el || a.lat==null || a.lng==null || b.lat==null || b.lng==null) continue;
       let leg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'WALK');
@@ -3116,6 +3147,7 @@ let tempIconImagePath = null;
 let originalIconImagePath = null;
 let tempPlaceId = null;       // Places place_id captured via Autocomplete selection below
 let tempPlaceLatLng = null;   // {lat,lng} from that same selection — skips re-geocoding entirely
+let tempClearLocation = false; // set by the "Clear current pin" button — forces lat/lng/place_id to null on save
 function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   const trip = getTrip(tripId);
   const item = itemId ? trip.items.find(i=>i.id===itemId) : null;
@@ -3129,6 +3161,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
   originalIconImagePath = tempIconImagePath;
   tempPlaceId = item && item.placeId ? item.placeId : null;
   tempPlaceLatLng = null;
+  tempClearLocation = false;
   modalPreventOutsideClose = true;
   const isPoiChecked = item ? !!item.isPoi : !!forcedIsPoi;
   const html = `
@@ -3176,6 +3209,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
       <label class="field-label">Location <span style="font-weight:400;">(optional)</span></label>
       <input type="text" id="item-location-input" autocomplete="off" placeholder="Search for a place to set its map pin…">
       <span class="muted-note">Search and select a real place to set its exact map pin (and Street View/photo). ${item&&item.lat!=null&&item.lng!=null?'Leave blank to keep the current pin.':'Leave blank to skip a map pin for now.'}</span>
+      ${item&&item.lat!=null&&item.lng!=null? `<div style="margin-top:6px;"><button type="button" id="clear-location-btn" class="btn btn-sm" onclick="clearItemLocation()">Clear current pin</button></div>` : ''}
     </div>
     <div class="field">
       <label class="field-label">Booked by</label>
@@ -3587,6 +3621,10 @@ async function saveItem(tripId, itemId){
   let coordsCleared = false;
   if(tempPlaceLatLng){
     payload.lat = tempPlaceLatLng.lat; payload.lng = tempPlaceLatLng.lng;
+  } else if(tempClearLocation){
+    // The "Clear current pin" button — an explicit request to drop the pin entirely,
+    // independent of whether the maps link itself changed.
+    payload.lat = null; payload.lng = null; coordsCleared = true;
   } else if(existingItem && existingItem.mapsLink !== (payload.maps_link||'')){
     payload.lat = null; payload.lng = null; coordsCleared = true;
   }
