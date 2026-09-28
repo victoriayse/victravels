@@ -4963,6 +4963,18 @@ async function shareLocation(tripId, itemId){
   }
 }
 
+// Converts a rich-text notes field to clean plain-text lines. Turning <br>/<p>/<div> line
+// breaks into real newlines BEFORE reading textContent matters — otherwise two separate
+// lines in the notes editor (e.g. "Reservation: …" and "Opening hours: …") collapse into one
+// run-on line with no space between them. Also decodes entities (&amp; etc.) for free, since
+// it goes through a real element rather than a regex strip.
+function htmlNotesToLines(html){
+  if(!html) return [];
+  const withBreaks = html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li)>/gi, '\n');
+  const el = document.createElement('div');
+  el.innerHTML = withBreaks;
+  return (el.textContent || '').split('\n').map(l=>l.trim()).filter(Boolean);
+}
 // Plain-text summary of a single day's plan, formatted to be readable pasted straight into
 // WhatsApp/Messages — for the times you or Weng Seng are separated, someone's phone dies, or
 // it's just easier to glance at a text than open the app. Deliberately built from every
@@ -4976,38 +4988,37 @@ function buildDayShareText(trip, dayNum){
     .slice()
     .sort(compareItems);
 
-  const header = `📅 ${trip.name} — Day ${dayNum}${dayDate?` (${fmtDateShort(dayDate)})`:''}${dayTitle?` · ${dayTitle}`:''}`;
+  const headerLines = [`📅 ${trip.name} — Day ${dayNum}${dayDate?` (${fmtDateShort(dayDate)})`:''}`];
+  if(dayTitle) headerLines.push(dayTitle);
 
-  const blocks = items.map(item=>{
+  const blocks = items.map((item, idx)=>{
     const emoji = (item.icon || TYPE_ICONS[item.type] || '📌');
     const time = itemTimeLabel(item);
-    const lines = [`${emoji} ${time? time+' ' : ''}${item.name||'Untitled'} [${(item.status||'').toUpperCase()}]`];
-    if(item.notes){
-      // Parsed through a real element (not a regex strip) so HTML entities like &amp; or
-      // &nbsp; come out as the actual characters, not literal escape codes in the text.
-      const notesEl = document.createElement('div');
-      notesEl.innerHTML = item.notes;
-      const plainNotes = (notesEl.textContent || '').replace(/\s+/g,' ').trim();
-      if(plainNotes) lines.push(`   ${plainNotes}`);
-    }
+    // "Nil" just means "doesn't need booking" — worth knowing in the app, but stamping
+    // every single card with it here just repeats itself down the whole message. Only the
+    // statuses that actually need action (Booked/To Book) earn a tag.
+    const statusTag = item.status && item.status!=='Nil' ? ` [${item.status.toUpperCase()}]` : '';
+    const lines = [`${idx+1}. ${emoji} ${time? time+' ' : ''}${item.name||'Untitled'}${statusTag}`];
+    htmlNotesToLines(item.notes).forEach(line=> lines.push(`   ${line}`));
     if(Number(item.costTotal) > 0){
-      const costLine = `   ${fmtCost(toSgd(item.costTotal, item.currency))}/pax${item.bookedBy? ' · '+item.bookedBy : ''}`;
-      lines.push(costLine);
+      lines.push(`   ${fmtCost(toSgd(item.costTotal, item.currency))}/pax${item.bookedBy? ' · '+item.bookedBy : ''}`);
     }
     if(item.mapsLink) lines.push(`   📍 ${item.mapsLink}`);
     return lines.join('\n');
   });
 
-  return [header, '', ...blocks.length? [blocks.join('\n\n')] : ['No activities planned for this day yet.'], '', '—', 'Sent from VicTravels'].join('\n');
+  return [...headerLines, '', ...blocks.length? [blocks.join('\n\n')] : ['No activities planned for this day yet.'], '', '—', 'Sent from VicTravels'].join('\n');
 }
 async function shareDayPlan(tripId){
   const trip = getTrip(tripId);
   if(!trip || ui.dayFilter==='all') return;
   const dayNum = Number(ui.dayFilter);
   const text = buildDayShareText(trip, dayNum);
-  const title = `${trip.name} — Day ${dayNum}`;
+  // Deliberately NOT passing a separate `title` here — the text above already opens with its
+  // own header line, and several share targets (WhatsApp included) render title AND text as
+  // two separate blocks, which just duplicated the same line twice in the shared message.
   if(navigator.share){
-    try{ await navigator.share({ title, text }); return; }
+    try{ await navigator.share({ text }); return; }
     catch(e){ if(e && e.name==='AbortError') return; /* user cancelled the share sheet */ }
   }
   try{
