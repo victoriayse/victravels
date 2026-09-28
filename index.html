@@ -152,6 +152,11 @@
   .btn-primary{background:linear-gradient(150deg,var(--primary),var(--primary-dark));border-color:var(--primary-dark);color:#fff;}
   .btn-primary:hover{box-shadow:0 8px 20px rgba(15,82,87,0.35);}
   .btn-danger{background:var(--danger);border-color:var(--danger);color:#fff;}
+  /* Deliberately a different color family from primary/danger — meant to stand out at a
+     glance as "the one you tap to hand the day's plan to someone else", the way a share
+     icon usually reads as its own distinct action rather than a normal form button. */
+  .btn-share{background:linear-gradient(150deg,#25a35a,#1a7a42);border-color:#1a7a42;color:#fff;font-weight:700;}
+  .btn-share:hover{box-shadow:0 8px 20px rgba(26,122,66,0.4);}
   .btn-ghost{background:transparent;border-color:transparent;}
   .btn-ghost:hover{background:var(--bg-soft);box-shadow:none;border-color:transparent;transform:none;}
   .btn-sm{padding:6px 13px;font-size:12.5px;}
@@ -2612,6 +2617,7 @@ function renderTripDetail(){
         }).join('')}
       </select>
       <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter==='all'||Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
+      ${ui.dayFilter!=='all'? `<button class="btn btn-sm btn-share" style="margin-left:auto;" onclick="shareDayPlan('${trip.id}')" title="Share this day's plan">📤 Share Day</button>` : ''}
     </div>
     <div class="filter-bar">
       <select class="filter-select" onchange="ui.typeFilter=this.value;render();">
@@ -4954,6 +4960,61 @@ async function shareLocation(tripId, itemId){
     alert('Location copied — paste it into Maps, a message, or share with your companion.');
   }catch(e){
     alert('Could not copy automatically — long-press the Navigation link above to copy it.');
+  }
+}
+
+// Plain-text summary of a single day's plan, formatted to be readable pasted straight into
+// WhatsApp/Messages — for the times you or Weng Seng are separated, someone's phone dies, or
+// it's just easier to glance at a text than open the app. Deliberately built from every
+// activity on that day (not whatever Type/Status/Booked-by filter happens to be active on
+// screen), since "share today's plan" should mean the whole day.
+function buildDayShareText(trip, dayNum){
+  const dayDate = trip.startDate ? addDays(trip.startDate, dayNum) : '';
+  const dayTitle = trip.dayTitles && trip.dayTitles[dayNum] ? trip.dayTitles[dayNum] : '';
+  const items = (trip.items||[])
+    .filter(i=>!i.isPoi && itemMatchesDay(i, trip, dayNum))
+    .slice()
+    .sort(compareItems);
+
+  const header = `📅 ${trip.name} — Day ${dayNum}${dayDate?` (${fmtDateShort(dayDate)})`:''}${dayTitle?` · ${dayTitle}`:''}`;
+
+  const blocks = items.map(item=>{
+    const emoji = (item.icon || TYPE_ICONS[item.type] || '📌');
+    const time = itemTimeLabel(item);
+    const lines = [`${emoji} ${time? time+' ' : ''}${item.name||'Untitled'} [${(item.status||'').toUpperCase()}]`];
+    if(item.notes){
+      // Parsed through a real element (not a regex strip) so HTML entities like &amp; or
+      // &nbsp; come out as the actual characters, not literal escape codes in the text.
+      const notesEl = document.createElement('div');
+      notesEl.innerHTML = item.notes;
+      const plainNotes = (notesEl.textContent || '').replace(/\s+/g,' ').trim();
+      if(plainNotes) lines.push(`   ${plainNotes}`);
+    }
+    if(Number(item.costTotal) > 0){
+      const costLine = `   ${fmtCost(toSgd(item.costTotal, item.currency))}/pax${item.bookedBy? ' · '+item.bookedBy : ''}`;
+      lines.push(costLine);
+    }
+    if(item.mapsLink) lines.push(`   📍 ${item.mapsLink}`);
+    return lines.join('\n');
+  });
+
+  return [header, '', ...blocks.length? [blocks.join('\n\n')] : ['No activities planned for this day yet.'], '', '—', 'Sent from VicTravels'].join('\n');
+}
+async function shareDayPlan(tripId){
+  const trip = getTrip(tripId);
+  if(!trip || ui.dayFilter==='all') return;
+  const dayNum = Number(ui.dayFilter);
+  const text = buildDayShareText(trip, dayNum);
+  const title = `${trip.name} — Day ${dayNum}`;
+  if(navigator.share){
+    try{ await navigator.share({ title, text }); return; }
+    catch(e){ if(e && e.name==='AbortError') return; /* user cancelled the share sheet */ }
+  }
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('Day’s plan copied — paste it into WhatsApp or a message.');
+  }catch(e){
+    alert('Could not copy automatically. Here is the plan to copy by hand:\n\n'+text);
   }
 }
 
