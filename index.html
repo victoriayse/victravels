@@ -780,6 +780,108 @@
   .color-cell{width:20px;height:16px;border:none;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);flex:1;}
   .color-cell.active{box-shadow:inset 0 0 0 2px var(--text);position:relative;z-index:1;}
 
+  /* ===== HOME TOOLS ===== */
+  .tools-heading{font-size:13px;font-weight:700;margin:22px 0 12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;}
+  .tool-card{display:flex;align-items:center;gap:12px;cursor:pointer;min-width:0;transition:border-color .15s ease, box-shadow .15s ease;}
+  .tool-card:hover{border-color:var(--primary);}
+  .tool-card .flight-name{overflow-wrap:anywhere;}
+  .tool-chev{color:var(--text-muted);font-size:20px;flex-shrink:0;}
+  .tool-card:hover .flight-name{text-decoration:none;}
+  .tool-card:hover .tool-chev{color:var(--primary);}
+
+  /* ===== FLIGHT TRACKING (fl-) ===== */
+  .fl-wrap{border-bottom:1px solid var(--border);min-width:0;}
+  .fl-wrap:last-child{border-bottom:none;}
+  .fl-wrap .flight-row{border-bottom:none;padding-bottom:6px;}
+  .fl-actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:0 0 10px 40px;min-width:0;}
+  .fl-chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg-soft);color:var(--text-muted);padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:600;max-width:100%;overflow-wrap:anywhere;}
+  .fl-chip.fl-on{background:var(--success-light);color:var(--success);}
+  .fl-panel{margin:0 0 12px 40px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;min-width:0;overflow-wrap:anywhere;}
+  .fl-panel .fl-line{margin:0 0 8px;}
+  .fl-inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0;}
+  .fl-inline input{flex:1 1 90px;min-width:0;width:auto;padding:7px 12px;font-size:13px;border-radius:999px;}
+  .fl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin:8px 0;}
+  .fl-stat{background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px 10px;min-width:0;}
+  .fl-stat b{display:block;font-size:14px;overflow-wrap:anywhere;}
+  .fl-stat span{font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;}
+  .fl-badge{display:inline-block;padding:3px 11px;border-radius:999px;font-size:12px;font-weight:700;}
+  .fl-badge.air{background:var(--success-light);color:var(--success);}
+  .fl-badge.gnd{background:var(--warning-light);color:var(--warning);}
+  .fl-links{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+  .fl-toggle{display:flex;align-items:center;gap:8px;font-size:13px;margin:8px 0;cursor:pointer;}
+  .fl-toggle input{width:auto;flex-shrink:0;}
+  @media (max-width:480px){ .fl-actions{padding-left:0;} .fl-panel{margin-left:0;} }
+
+  /* ===== BEST TIME (bt-) ===== */
+  .bt-section{margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);min-width:0;overflow-wrap:anywhere;}
+  .bt-title{font-size:13px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;}
+  .bt-days{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;}
+  .bt-days .chip-opt{padding:6px 12px;font-size:12px;}
+  .bt-chart{display:flex;align-items:flex-end;gap:2px;height:92px;margin:10px 0 2px;}
+  .bt-bar{flex:1 1 0;min-width:0;border-radius:4px 4px 0 0;background:var(--primary-light);border:1px solid rgba(79,91,213,.25);border-bottom:none;}
+  .bt-bar.quiet{background:var(--success-light);border-color:rgba(0,150,127,.45);}
+  .bt-bar.peak{background:var(--accent2-light);border-color:rgba(232,64,126,.45);}
+  .bt-bar.now{outline:2px solid var(--primary);outline-offset:1px;}
+  .bt-axis{display:flex;gap:2px;font-size:9.5px;color:var(--text-muted);}
+  .bt-axis span{flex:1 1 0;min-width:0;text-align:center;overflow:hidden;}
+  .bt-sum{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px;}
+  .bt-pill{padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600;}
+  .bt-pill.q{background:var(--success-light);color:var(--success);}
+  .bt-pill.p{background:var(--accent2-light);color:var(--accent2);}
+  .bt-pill.n{background:var(--primary-light);color:var(--primary-dark);}
+  .bt-key{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;}
+  .bt-key input{flex:1 1 160px;min-width:0;width:auto;padding:7px 12px;font-size:13px;border-radius:999px;}
+
+  /* ===== TAX REFUND (tx-) ===== */
+  .tx-wrap{min-width:0;overflow-wrap:anywhere;}
+  .tx-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .tx-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;margin-bottom:8px;}
+  .tx-row select,.tx-row input[type=number]{min-width:0;width:100%;}
+  .tx-check{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);white-space:nowrap;}
+  .tx-check input{width:auto;}
+  .tx-x{background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;padding:2px 6px;border-radius:50%;}
+  .tx-x:hover{background:var(--bg-soft);}
+  .tx-res{border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin:10px 0;background:var(--bg);min-width:0;}
+  .tx-res.bad{background:var(--danger-light);border-color:rgba(179,38,30,.25);}
+  .tx-kv{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:2px 0;}
+  .tx-kv span:first-child{color:var(--text-muted);}
+  .tx-kv b{text-align:right;overflow-wrap:anywhere;}
+  .tx-big{font-size:22px;font-weight:700;letter-spacing:-0.01em;}
+  .tx-guide{border-top:1px solid var(--border);margin-top:12px;padding-top:12px;font-size:13px;}
+  .tx-guide ul{margin:6px 0 6px 18px;padding:0;}
+  .tx-guide li{margin:2px 0;}
+  .tx-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--warning-light);color:var(--warning);margin-left:6px;vertical-align:middle;}
+  @media (max-width:480px){
+    .tx-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);}
+    .tx-row select{grid-column:1 / -1;}
+  }
+
+  /* ===== JET LAG (jl-) ===== */
+  .jl-wrap{min-width:0;overflow-wrap:anywhere;}
+  .jl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:6px;}
+  .jl-grid .field{margin-bottom:6px;min-width:0;}
+  .jl-grid input,.jl-grid select{min-width:0;width:100%;box-sizing:border-box;}
+  .jl-sum{background:var(--primary-light);color:var(--primary-dark);border-radius:var(--radius-sm);padding:10px 14px;font-size:13.5px;margin:10px 0;}
+  .jl-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--text-muted);margin:8px 0;}
+  .jl-legend i{display:inline-block;width:12px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle;}
+  .jl-day{border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;background:#fff;min-width:0;}
+  .jl-day-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 10px;font-size:13px;font-weight:600;}
+  .jl-day-head small{font-weight:500;color:var(--text-muted);font-size:11.5px;}
+  .jl-strip{position:relative;height:50px;margin:8px 0 2px;background:var(--bg);border-radius:8px;overflow:hidden;}
+  .jl-lane{position:absolute;left:0;right:0;height:14px;}
+  .jl-lane.l1{top:3px;}.jl-lane.l2{top:19px;}.jl-lane.l3{top:35px;}
+  .jl-seg{position:absolute;top:0;bottom:0;border-radius:4px;}
+  .jl-sleep{background:#4f5bd5;}
+  .jl-nap{background:#00b3a4;}
+  .jl-seek{background:#f5b301;}
+  .jl-dark{background:#8b8fa3;}
+  .jl-caf{background:#e8407e;opacity:.8;}
+  .jl-mel{position:absolute;top:0;bottom:0;width:6px;margin-left:-3px;border-radius:3px;background:#8b5cf6;}
+  .jl-axis{display:flex;justify-content:space-between;font-size:9.5px;color:var(--text-muted);}
+  .jl-tips{font-size:12px;color:var(--text-muted);margin-top:6px;}
+  .jl-tips div{margin:2px 0;}
+  @media (max-width:480px){ .jl-grid{grid-template-columns:1fr 1fr;} }
+
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
 </style>
@@ -2369,7 +2471,8 @@ function renderHome(){
         <span class="emoji">🧳</span>
         <p>No trips yet. Start planning your next adventure.</p>
         <button class="btn btn-primary" onclick="openAddTripModal()">+ Add Trip</button>
-      </div>`;
+      </div>
+      ${renderToolsSection()}`;
   }
   if(!ui.homeTripId || !getTrip(ui.homeTripId)) ui.homeTripId = defaultHomeTrip();
   const trip = getTrip(ui.homeTripId);
@@ -2396,6 +2499,7 @@ function renderHome(){
       ${renderExpensesCard(trip)}
       ${renderTasksCard(trip)}
     </div>
+    ${renderToolsSection()}
   `;
 }
 
@@ -2486,6 +2590,7 @@ function renderFlightCard(trip){
       <div class="section-title">Flight Details</div>
       ${flights.length===0 ? '<p class="muted-note">No flights added yet.</p>' :
         flights.slice(0,4).map(f=>`
+          <div class="fl-wrap">
           <div class="flight-row" onclick="openItemDetailModal('${trip.id}','${f.id}')">
             <span class="flight-icon">✈️</span>
             <div style="flex:1;min-width:0;">
@@ -2493,6 +2598,8 @@ function renderFlightCard(trip){
               <div class="flight-meta">${itemDateLabel(f)}${f.timeStart? ' · '+itemTimeLabel(f):''}</div>
             </div>
             <span class="status-badge ${statusClass(f.status)}">${f.status}</span>
+          </div>
+          ${flActionsHtml(trip.id, f)}
           </div>`).join('')}
     </div>`;
 }
@@ -5413,6 +5520,7 @@ function openItemDetailModal(tripId, itemId){
       ${item.mapsLink? `<button type="button" class="nav-btn" onclick="shareLocation('${trip.id}','${item.id}')">📤 Share Location</button>`:''}
     </div>` : ''}
     ${item.notes? `<div class="detail-notes">${linkedNotes}</div>` : ''}
+    ${btSectionHtml(trip, item)}
     ${(item.files&&item.files.length)? `<div class="detail-files">
       ${item.files.map((f,idx)=>`<span class="file-pill" onclick="openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('')}
     </div>` : ''}
@@ -5440,8 +5548,1090 @@ function detailGalleryNav(delta){
   if(el) el.innerHTML = renderDetailGalleryHtml();
 }
 
+/* ============ HOME: TOOLS SECTION ============ */
+function renderToolsSection(){
+  return `
+    <div class="tools-heading">🧰 Tools</div>
+    <div class="home-grid">
+      <div class="card tool-card" role="button" tabindex="0" onclick="openTaxRefundModal()">
+        <span class="flight-icon">🧾</span>
+        <div style="flex:1;min-width:0;">
+          <div class="flight-name">Tax Refund Calculator</div>
+          <div class="flight-meta">VAT / tourist tax refund estimate and how to claim it</div>
+        </div>
+        <span class="tool-chev">›</span>
+      </div>
+      <div class="card tool-card" role="button" tabindex="0" onclick="openJetLagModal()">
+        <span class="flight-icon">😴</span>
+        <div style="flex:1;min-width:0;">
+          <div class="flight-name">Jet Lag Planner</div>
+          <div class="flight-meta">Day-by-day sleep, light and caffeine plan</div>
+        </div>
+        <span class="tool-chev">›</span>
+      </div>
+    </div>`;
+}
+
+/* ============ FEATURE 1: LIVE FLIGHT TRACKING & GATE ALERTS ============ */
+// IATA airline code -> ICAO callsign prefix (OpenSky reports ICAO-style callsigns, e.g. SIA324).
+const FL_AIRLINES = {
+  SQ:'SIA', TR:'TGW', MI:'SLK', '3K':'JSA', KL:'KLM', AF:'AFR', EK:'UAE', QR:'QTR', BA:'BAW', LH:'DLH',
+  SU:'AFL', EY:'ETD', TK:'THY', AY:'FIN', SK:'SAS', LX:'SWR', OS:'AUA', IB:'IBE', VY:'VLG', TP:'TAP',
+  AZ:'ITY', LO:'LOT', OK:'CSA', SN:'BEL', EI:'EIN', FR:'RYR', U2:'EZY', W6:'WZZ', DY:'NAX', D8:'IBK',
+  HV:'TRA', TO:'TVF', UX:'AEA', KE:'KAL', OZ:'AAR', JL:'JAL', NH:'ANA', CX:'CPA', KA:'HDA', CI:'CAL',
+  BR:'EVA', MU:'CES', CA:'CCA', CZ:'CSN', MF:'CXA', HU:'CHH', TG:'THA', FD:'AIQ', AK:'AXM', D7:'XAX',
+  QZ:'AWQ', GA:'GIA', MH:'MAS', VN:'HVN', VJ:'VJC', PR:'PAL', '5J':'CEB', QF:'QFA', JQ:'JST', VA:'VOZ',
+  NZ:'ANZ', AI:'AIC', '6E':'IGO', UL:'ALK', AA:'AAL', DL:'DAL', UA:'UAL', AC:'ACA', WN:'SWA', B6:'JBU',
+  AS:'ASA', LA:'LAN', SV:'SVA', MS:'MSR', ET:'ETH', SA:'SAA', KQ:'KQA', WY:'OMA', GF:'GFA', RJ:'RJA',
+  FZ:'FDB', G9:'ABY', PC:'PGT', '8M':'MMA', OD:'MXD', BI:'RBA', JT:'LNI', ID:'BTK', QG:'CTV', IT:'TTW'
+};
+const FL_LS_NUM = 'victravels_fl_num';        // { activityId: 'SQ324' }
+const FL_LS_GATE = 'victravels_fl_gate';      // { activityId: { gate, terminal } }
+const FL_LS_ALERTS = 'victravels_fl_alerts';  // { activityId: { tripId, startedAt } }
+function flLoad(key){ try{ return JSON.parse(localStorage.getItem(key)||'{}') || {}; }catch(e){ return {}; } }
+function flSave(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); }catch(e){} }
+
+// Pure: pull a flight number out of free text (name + notes). Prefers a code we know.
+function flParseFlightNumber(text){
+  const t = String(text||'').replace(/<[^>]*>/g,' ');
+  const re = /\b([A-Z]{2}|[A-Z]\d|\d[A-Z])\s?(\d{1,4})\b/g;
+  let m, first = null;
+  while((m = re.exec(t))){
+    const rec = flMakeFlight(m[1], m[2]);
+    if(rec.icao) return rec;
+    if(!first) first = rec;
+  }
+  return first;
+}
+function flMakeFlight(code, num){
+  const n = String(parseInt(num,10));
+  const icao = FL_AIRLINES[code] || null;
+  return { code, num: n, iata: code+n, icao, callsign: icao ? icao+n : null };
+}
+// Pure: does an OpenSky callsign (padded, maybe zero-padded or with a letter suffix) match?
+function flMatchCallsign(raw, flight){
+  if(!raw || !flight) return false;
+  const cs = String(raw).trim().toUpperCase();
+  const prefixes = [flight.icao, flight.code].filter(Boolean);
+  return prefixes.some(p=>{
+    if(!cs.startsWith(p)) return false;
+    const m = cs.slice(p.length).match(/^0*(\d{1,4})[A-Z]?$/);
+    return !!m && m[1] === flight.num;
+  });
+}
+// Pure: OpenSky state vector -> readable summary.
+function flSummarize(s, nowSec){
+  if(!s) return null;
+  const alt = s[7]!=null ? s[7] : s[13];
+  return {
+    callsign: (s[1]||'').trim(), country: s[2]||'', lastContact: s[4]||null,
+    lon: s[5], lat: s[6], altM: alt!=null ? alt : null,
+    onGround: !!s[8], speedMs: s[9], heading: s[10], vrate: s[11],
+    ageSec: s[4] ? Math.max(0, Math.round((nowSec||Date.now()/1000) - s[4])) : null
+  };
+}
+// Pure: compare two summaries and return human-readable change messages.
+function flDiffStatus(prev, cur){
+  const out = [];
+  if(!prev) return out;
+  if(prev.found === false && cur && cur.found !== false) { out.push('Flight is now visible on the live feed'); return out; }
+  if(prev.found !== false && (!cur || cur.found === false)) { out.push('Flight left the live feed (landed, or out of receiver coverage)'); return out; }
+  if(!cur) return out;
+  if(prev.onGround && !cur.onGround) out.push('Took off');
+  else if(!prev.onGround && cur.onGround) out.push('Landed');
+  else if(!cur.onGround){
+    if(prev.altM!=null && cur.altM!=null && prev.altM - cur.altM >= 1500) out.push('Altitude dropping: '+Math.round(prev.altM*3.281)+' ft to '+Math.round(cur.altM*3.281)+' ft');
+    if(prev.speedMs && cur.speedMs!=null){
+      const d = Math.abs(cur.speedMs - prev.speedMs) * 3.6;
+      if(d >= 50 && d/(prev.speedMs*3.6) >= 0.15) out.push('Ground speed changed: '+Math.round(prev.speedMs*3.6)+' to '+Math.round(cur.speedMs*3.6)+' km/h');
+    }
+  }
+  return out;
+}
+function flAgeText(sec){
+  if(sec==null) return 'unknown';
+  if(sec < 90) return sec+'s ago';
+  if(sec < 5400) return Math.round(sec/60)+' min ago';
+  return Math.round(sec/3600)+' h ago';
+}
+const FL_CACHE = { at:0, states:null };
+let flCooldownUntil = 0;
+async function flFetchStates(){
+  const now = Date.now();
+  if(FL_CACHE.states && now - FL_CACHE.at < 30000) return { ok:true, states:FL_CACHE.states };
+  if(now < flCooldownUntil) return { ok:false, error:'rate' };
+  try{
+    const res = await fetch('https://opensky-network.org/api/states/all');
+    if(res.status === 429){ flCooldownUntil = Date.now() + 60000; return { ok:false, error:'rate' }; }
+    if(!res.ok) return { ok:false, error:'http' };
+    const j = await res.json();
+    FL_CACHE.at = Date.now(); FL_CACHE.states = (j && j.states) || [];
+    return { ok:true, states:FL_CACHE.states };
+  }catch(e){ return { ok:false, error:'network' }; }
+}
+function flErrText(code){
+  if(code==='rate') return 'OpenSky is rate-limiting anonymous requests right now. Please wait a minute and try again.';
+  if(code==='http') return 'OpenSky did not respond properly. Please try again shortly.';
+  return 'Could not reach OpenSky (network or browser restriction). Use the FlightAware / Flightradar24 links instead.';
+}
+async function flLookup(flight){
+  const r = await flFetchStates();
+  if(!r.ok) return { ok:false, error:r.error };
+  const nowSec = Date.now()/1000;
+  const hit = r.states.find(s => flMatchCallsign(s[1], flight));
+  if(!hit) return { ok:true, found:false };
+  const sum = flSummarize(hit, nowSec); sum.found = true;
+  return { ok:true, found:true, sum };
+}
+// Flight number for an activity: manual override first, otherwise parsed from name + notes.
+function flGetFlight(item){
+  const manual = flLoad(FL_LS_NUM)[item.id];
+  if(manual){ const p = flParseFlightNumber(manual); if(p) return p; }
+  return flParseFlightNumber((item.name||'')+' '+(item.notes||''));
+}
+const FL_UI = {}; // activityId -> { open, loading, res, err }
+function flState(id){ return FL_UI[id] || (FL_UI[id] = { open:false, loading:false, res:null, err:null }); }
+
+function flActionsHtml(tripId, f){
+  const st = flState(f.id);
+  const fl = flGetFlight(f);
+  const gate = flLoad(FL_LS_GATE)[f.id] || {};
+  const alertsOn = !!flLoad(FL_LS_ALERTS)[f.id];
+  return `
+    <div class="fl-actions">
+      <button type="button" class="btn btn-sm" onclick="flTogglePanel('${tripId}','${f.id}')">📡 Track${fl? ' '+escapeHtml(fl.iata):''}</button>
+      ${gate.gate? `<span class="fl-chip" id="fl-gatechip-${f.id}">Gate ${escapeHtml(gate.gate)}</span>` : ''}
+      ${gate.terminal? `<span class="fl-chip">Terminal ${escapeHtml(gate.terminal)}</span>` : ''}
+      ${alertsOn? `<span class="fl-chip fl-on">🔔 Alerts on</span>` : ''}
+    </div>
+    <div class="fl-panel ${st.open?'':'hidden'}" id="fl-panel-${f.id}">${st.open? flPanelInner(tripId, f) : ''}</div>`;
+}
+function flFindItem(tripId, id){
+  const trip = getTrip(tripId);
+  return trip && (trip.items||[]).find(i=>i.id===id);
+}
+function flRefreshPanel(tripId, id){
+  const el = document.getElementById('fl-panel-'+id);
+  const item = flFindItem(tripId, id);
+  if(!el || !item) return;
+  el.innerHTML = flPanelInner(tripId, item);
+}
+function flTogglePanel(tripId, id){
+  const st = flState(id);
+  st.open = !st.open;
+  const el = document.getElementById('fl-panel-'+id);
+  if(!el) return;
+  el.classList.toggle('hidden', !st.open);
+  if(st.open) flRefreshPanel(tripId, id);
+}
+function flPanelInner(tripId, f){
+  const st = flState(f.id);
+  const fl = flGetFlight(f);
+  const gate = flLoad(FL_LS_GATE)[f.id] || {};
+  const alertsOn = !!flLoad(FL_LS_ALERTS)[f.id];
+  let h = '';
+  if(!fl){
+    h += `<p class="fl-line">No flight number found in this activity's name or notes. Enter one (for example SQ324):</p>
+      <div class="fl-inline">
+        <input type="text" id="fl-num-${f.id}" placeholder="e.g. SQ324" maxlength="8" autocapitalize="characters">
+        <button type="button" class="btn btn-sm btn-primary" onclick="flSaveNumber('${tripId}','${f.id}')">Save</button>
+      </div>`;
+  } else {
+    h += `<div class="fl-line"><b>${escapeHtml(fl.iata)}</b>${fl.callsign? ' <span class="muted-note">(live callsign '+escapeHtml(fl.callsign)+')</span>' : ' <span class="muted-note">(airline not in the built-in list, so live lookup may not match)</span>'}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="flClearNumber('${tripId}','${f.id}')">Change</button></div>
+      <div class="fl-inline"><button type="button" class="btn btn-sm btn-primary" ${st.loading?'disabled':''} onclick="flCheck('${tripId}','${f.id}')">${st.loading?'Checking...':'Check live status'}</button></div>`;
+    if(st.err) h += `<p class="muted-note">${escapeHtml(st.err)}</p>`;
+    else if(st.res) h += flResultHtml(st.res);
+    h += `<div class="fl-links">
+        <a class="nav-btn" href="https://www.flightaware.com/live/flight/${encodeURIComponent(fl.callsign||fl.iata)}" target="_blank" rel="noopener">FlightAware</a>
+        <a class="nav-btn" href="https://www.flightradar24.com/data/flights/${encodeURIComponent(fl.iata.toLowerCase())}" target="_blank" rel="noopener">Flightradar24</a>
+      </div>
+      <label class="fl-toggle"><input type="checkbox" ${alertsOn?'checked':''} onchange="flToggleAlerts('${tripId}','${f.id}',this.checked)"> Alert me when the status changes (checks every 60 s while this page is open, up to 12 h)</label>`;
+  }
+  h += `<div class="field-row" style="margin-top:8px;gap:8px;">
+      <div class="field" style="margin-bottom:6px;min-width:90px;"><label class="field-label">Gate</label><input type="text" id="fl-gate-${f.id}" value="${escapeHtml(gate.gate||'')}" maxlength="6" placeholder="e.g. B12"></div>
+      <div class="field" style="margin-bottom:6px;min-width:90px;"><label class="field-label">Terminal</label><input type="text" id="fl-term-${f.id}" value="${escapeHtml(gate.terminal||'')}" maxlength="6" placeholder="e.g. 3"></div>
+    </div>
+    <button type="button" class="btn btn-sm" onclick="flSaveGate('${tripId}','${f.id}')">Save gate / terminal</button>
+    <p class="muted-note" style="font-size:11.5px;margin-top:8px;">Honest note: no free live API provides gate or terminal data, so those fields are entered by you (or check the FlightAware / Flightradar24 links). Live position comes from the anonymous OpenSky Network feed and can lag or miss flights without receiver coverage.</p>`;
+  return h;
+}
+function flResultHtml(res){
+  if(!res.found) return `<p class="muted-note">Not visible on the live feed right now. It may not have departed yet, may have landed, or may be outside receiver coverage.</p>`;
+  const s = res.sum;
+  const ft = s.altM!=null ? Math.round(s.altM*3.281).toLocaleString()+' ft' : 'n/a';
+  const kmh = s.speedMs!=null ? Math.round(s.speedMs*3.6)+' km/h' : 'n/a';
+  return `<div class="fl-line"><span class="fl-badge ${s.onGround?'gnd':'air'}">${s.onGround?'On the ground':'Airborne'}</span></div>
+    <div class="fl-stats">
+      <div class="fl-stat"><span>Altitude</span><b>${ft}</b></div>
+      <div class="fl-stat"><span>Ground speed</span><b>${kmh}</b></div>
+      <div class="fl-stat"><span>Heading</span><b>${s.heading!=null? Math.round(s.heading)+'°' : 'n/a'}</b></div>
+      <div class="fl-stat"><span>Origin country</span><b>${escapeHtml(s.country||'n/a')}</b></div>
+      <div class="fl-stat"><span>Last seen</span><b>${flAgeText(s.ageSec)}</b></div>
+      ${s.lat!=null && s.lon!=null ? `<div class="fl-stat"><span>Position</span><b><a href="https://www.google.com/maps?q=${s.lat},${s.lon}" target="_blank" rel="noopener">${Number(s.lat).toFixed(2)}, ${Number(s.lon).toFixed(2)}</a></b></div>` : ''}
+    </div>`;
+}
+function flSaveNumber(tripId, id){
+  const el = document.getElementById('fl-num-'+id);
+  const p = el && flParseFlightNumber(el.value.toUpperCase());
+  if(!p){ showToast('Enter a flight number like SQ324', true); return; }
+  const m = flLoad(FL_LS_NUM); m[id] = p.iata; flSave(FL_LS_NUM, m);
+  flState(id).res = null; flState(id).err = null;
+  render(); flState(id).open = true; const pan = document.getElementById('fl-panel-'+id); if(pan){ pan.classList.remove('hidden'); flRefreshPanel(tripId, id); }
+}
+function flClearNumber(tripId, id){
+  const m = flLoad(FL_LS_NUM); m[id] = ''; delete m[id]; flSave(FL_LS_NUM, m);
+  const item = flFindItem(tripId, id);
+  // If the number came from the notes, clearing the override just re-parses it; show the input anyway.
+  const el = document.getElementById('fl-panel-'+id);
+  if(el && item){
+    flState(id).res = null; flState(id).err = null;
+    el.innerHTML = `<p class="fl-line">Enter a flight number (for example SQ324):</p>
+      <div class="fl-inline"><input type="text" id="fl-num-${id}" placeholder="e.g. SQ324" maxlength="8" autocapitalize="characters">
+      <button type="button" class="btn btn-sm btn-primary" onclick="flSaveNumber('${tripId}','${id}')">Save</button></div>`;
+  }
+}
+async function flCheck(tripId, id){
+  const item = flFindItem(tripId, id);
+  if(!item) return;
+  const fl = flGetFlight(item);
+  const st = flState(id);
+  if(!fl || !fl.callsign){ st.err = 'This airline is not in the built-in callsign list, so live lookup is unavailable. Use the FlightAware / Flightradar24 links.'; flRefreshPanel(tripId, id); return; }
+  st.loading = true; st.err = null; flRefreshPanel(tripId, id);
+  const r = await flLookup(fl);
+  st.loading = false;
+  if(!r.ok) st.err = flErrText(r.error); else st.res = r;
+  flRefreshPanel(tripId, id);
+}
+function flSaveGate(tripId, id){
+  const g = (document.getElementById('fl-gate-'+id)||{}).value || '';
+  const t = (document.getElementById('fl-term-'+id)||{}).value || '';
+  const all = flLoad(FL_LS_GATE);
+  const old = all[id] || {};
+  const nu = { gate: g.trim().toUpperCase(), terminal: t.trim().toUpperCase() };
+  if(nu.gate || nu.terminal) all[id] = nu; else delete all[id];
+  flSave(FL_LS_GATE, all);
+  const changed = (old.gate||old.terminal) && (old.gate !== nu.gate || old.terminal !== nu.terminal);
+  if(changed){
+    showToast('Gate changed: '+(old.gate||'-')+(old.terminal? ' (T'+old.terminal+')':'')+' to '+(nu.gate||'-')+(nu.terminal? ' (T'+nu.terminal+')':''));
+  } else showToast('Gate / terminal saved');
+  const open = flState(id).open;
+  render();
+  if(open){ flState(id).open = true; const pan = document.getElementById('fl-panel-'+id); if(pan){ pan.classList.remove('hidden'); flRefreshPanel(tripId, id); } }
+}
+
+// ---- Gate alerts: poll every 60 s while the page is open, stop after 12 h ----
+const FL_ALERT_TIMERS = {};
+const FL_ALERT_PREV = {};
+const FL_ALERT_MAX_MS = 12*3600*1000;
+function flNotify(title, body){
+  showToast(title+': '+body);
+  try{ if(typeof Notification!=='undefined' && Notification.permission==='granted') new Notification(title, { body }); }catch(e){}
+}
+async function flToggleAlerts(tripId, id, on){
+  const all = flLoad(FL_LS_ALERTS);
+  if(!on){
+    delete all[id]; flSave(FL_LS_ALERTS, all); flStopAlert(id);
+    showToast('Flight alerts off'); return;
+  }
+  try{
+    if(typeof Notification!=='undefined' && Notification.permission==='default') await Notification.requestPermission();
+  }catch(e){}
+  if(typeof Notification==='undefined' || Notification.permission!=='granted') showToast('Browser notifications are off, so you will only get in-app alerts while this page is open.');
+  all[id] = { tripId, startedAt: Date.now() }; flSave(FL_LS_ALERTS, all);
+  flStartAlert(tripId, id, Date.now());
+  showToast('Flight alerts on');
+}
+function flStopAlert(id){
+  if(FL_ALERT_TIMERS[id]){ clearInterval(FL_ALERT_TIMERS[id]); delete FL_ALERT_TIMERS[id]; }
+  delete FL_ALERT_PREV[id];
+}
+function flStartAlert(tripId, id, startedAt){
+  flStopAlert(id);
+  const tick = async ()=>{
+    if(Date.now() - startedAt > FL_ALERT_MAX_MS){
+      const all = flLoad(FL_LS_ALERTS); delete all[id]; flSave(FL_LS_ALERTS, all); flStopAlert(id);
+      showToast('Flight alerts stopped after 12 hours'); return;
+    }
+    const item = flFindItem(tripId, id);
+    const fl = item && flGetFlight(item);
+    if(!fl || !fl.callsign) return;
+    const r = await flLookup(fl);
+    if(!r.ok) return; // stay quiet on transient failures
+    const cur = r.found ? r.sum : { found:false };
+    const prev = FL_ALERT_PREV[id];
+    FL_ALERT_PREV[id] = cur;
+    flDiffStatus(prev, cur).forEach(msg => flNotify(fl.iata, msg));
+  };
+  tick();
+  FL_ALERT_TIMERS[id] = setInterval(tick, 60000);
+}
+function flResumeAlerts(){
+  const all = flLoad(FL_LS_ALERTS);
+  Object.keys(all).forEach(id=>{
+    const a = all[id];
+    if(!a || Date.now() - a.startedAt > FL_ALERT_MAX_MS){ delete all[id]; return; }
+    if(flFindItem(a.tripId, id)) flStartAlert(a.tripId, id, a.startedAt); else delete all[id];
+  });
+  flSave(FL_LS_ALERTS, all);
+}
+
+/* ============ FEATURE 2: BEST TIME TO VISIT (BestTime.app) ============ */
+const BT_LS_KEY = 'victravels_besttime_key';
+const BT_LS_CACHE = 'victravels_besttime_cache';
+const BT_TTL = 7*24*3600*1000;
+const BT_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const BT_UI = {}; // itemId -> { day, loading, data, err, live, needAddr }
+function btGetKey(){ try{ return localStorage.getItem(BT_LS_KEY)||''; }catch(e){ return ''; } }
+function btCacheKey(item){ return (item.name||'')+'|'+(item.lat!=null? Number(item.lat).toFixed(4):'')+'|'+(item.lng!=null? Number(item.lng).toFixed(4):'')+'|'+(item.mapsLink||''); }
+function btCacheGet(item){
+  try{
+    const all = JSON.parse(localStorage.getItem(BT_LS_CACHE)||'{}');
+    const e = all[btCacheKey(item)];
+    if(e && Date.now() - e.t < BT_TTL) return e.data;
+  }catch(e){}
+  return null;
+}
+function btCacheSet(item, data){
+  try{
+    const all = JSON.parse(localStorage.getItem(BT_LS_CACHE)||'{}');
+    Object.keys(all).forEach(k=>{ if(Date.now() - all[k].t >= BT_TTL) delete all[k]; });
+    all[btCacheKey(item)] = { t: Date.now(), data };
+    localStorage.setItem(BT_LS_CACHE, JSON.stringify(all));
+  }catch(e){}
+}
+// Pure: BestTime /forecasts response -> compact structure. day_raw has 24 values starting at 06:00.
+function btNormalize(resp){
+  if(!resp || !Array.isArray(resp.analysis)) return null;
+  const vi = resp.venue_info || {};
+  const days = [];
+  for(let d=0; d<7; d++){
+    const a = resp.analysis.find(x => x && x.day_info && x.day_info.day_int === d);
+    const hours = new Array(24).fill(null);
+    if(a && Array.isArray(a.day_raw)){
+      a.day_raw.forEach((v,i)=>{ hours[(6+i)%24] = v; });
+      (a.hour_analysis||[]).forEach(h=>{ if(h && h.intensity_nr === 999) hours[h.hour] = null; });
+    }
+    const oc = a && a.day_info && a.day_info.venue_open_close_v2;
+    days.push({ hours, open: oc && oc.open_24h ? 'Open 24 hours' : (oc && oc['12h'] && oc['12h'].length ? oc['12h'].join(', ') : ''), closedAllDay: !!(a && a.day_info && a.day_info.venue_open === 'closed') });
+  }
+  return { venueId: vi.venue_id||'', name: vi.venue_name||'', address: vi.venue_address||'', rating: vi.rating||null, days };
+}
+// Pure: best (lowest) and worst (highest) 2-hour windows among hours with data.
+function btWindows(hours, span){
+  span = span||2;
+  let best = null, worst = null;
+  for(let h=0; h<24; h++){
+    let sum = 0, ok = true;
+    for(let k=0; k<span; k++){ const v = hours[(h+k)%24]; if(h+k>23 || v==null){ ok=false; break; } sum += v; }
+    if(!ok) continue;
+    const avg = sum/span;
+    if(!best || avg < best.avg) best = { start:h, end:h+span, avg };
+    if(!worst || avg > worst.avg) worst = { start:h, end:h+span, avg };
+  }
+  return { quiet: best, peak: worst };
+}
+function btHourLabel(h){ h = ((h%24)+24)%24; const ap = h>=12 ? 'PM' : 'AM'; const x = h%12===0 ? 12 : h%12; return x+' '+ap; }
+function btRangeLabel(w){
+  if(!w) return '';
+  const a = btHourLabel(w.start), b = btHourLabel(w.end);
+  const apA = a.split(' ')[1], apB = b.split(' ')[1];
+  return apA===apB ? a.split(' ')[0]+'–'+b : a+' – '+b;
+}
+function btEligible(item){
+  return item && item.name && !item.isPoi && item.type!=='Flight' && item.type!=='Stays' && ((item.lat!=null && item.lng!=null) || item.mapsLink);
+}
+function btSectionHtml(trip, item){
+  if(!btEligible(item)) return '';
+  const st = BT_UI[item.id] || (BT_UI[item.id] = { day: (new Date().getDay()+6)%7, loading:false, data:null, err:null, live:null, needAddr:false });
+  if(!st.data){ const c = btCacheGet(item); if(c) st.data = c; }
+  return `<div class="bt-section" id="bt-section">${btInner(trip.id, item)}</div>`;
+}
+function btInner(tripId, item){
+  const st = BT_UI[item.id];
+  const key = btGetKey();
+  let h = `<div class="bt-title">⏱ Best time to visit</div>`;
+  if(st.data) h += btChartHtml(tripId, item, st);
+  else {
+    h += `<p class="muted-note" style="margin:0 0 8px;">Crowd data from BestTime.app. Nothing is requested until you tap the button, and results are saved for 7 days.</p>`;
+    h += `<button type="button" class="btn btn-sm btn-primary" ${st.loading?'disabled':''} onclick="btCheck('${tripId}','${item.id}')">${st.loading?'Checking...':'Check busy times'}</button>`;
+  }
+  if(st.err) h += `<p class="muted-note" style="margin-top:8px;color:var(--danger);">${escapeHtml(st.err)}</p>`;
+  if(st.needAddr || !st.data){
+    h += `<div class="bt-key" style="${st.needAddr?'':'display:none;'}" id="bt-addr-row"><input type="text" id="bt-addr" placeholder="Venue address (street, city)" value="${escapeHtml(st.addr||'')}"><button type="button" class="btn btn-sm" onclick="btCheck('${tripId}','${item.id}')">Retry</button></div>`;
+  }
+  h += `<div class="bt-key"><input type="password" id="bt-key" autocomplete="off" placeholder="BestTime API key (private)" value="${escapeHtml(key)}"><button type="button" class="btn btn-sm" onclick="btSaveKey()">Save key</button></div>`;
+  if(!key) h += `<p class="muted-note" style="font-size:11.5px;margin:6px 0 0;">Free key: besttime.app, sign up, API keys (private key). It is only stored in this browser.</p>`;
+  return h;
+}
+function btSaveKey(){
+  const el = document.getElementById('bt-key');
+  if(!el) return;
+  try{ localStorage.setItem(BT_LS_KEY, el.value.trim()); }catch(e){}
+  showToast(el.value.trim()? 'BestTime key saved' : 'BestTime key cleared');
+}
+function btChartHtml(tripId, item, st){
+  const d = st.data.days[st.day] || st.data.days[0];
+  const hours = d.hours;
+  const idx = hours.map((v,i)=>v==null?-1:i).filter(i=>i>=0);
+  const w = btWindows(hours, 2);
+  const todayIdx = (new Date().getDay()+6)%7;
+  const nowH = new Date().getHours();
+  let h = `<div class="bt-days">${BT_DAYS.map((n,i)=>`<button type="button" class="chip-opt ${i===st.day?'on':''}" onclick="btSetDay('${tripId}','${item.id}',${i})">${n}</button>`).join('')}</div>`;
+  if(!idx.length){
+    h += `<p class="muted-note">No busyness data for this day (the place may be closed).</p>`;
+  } else {
+    // Show the span of hours with data, plus one hour of padding each side so bars aren't clipped.
+    const lo = Math.min(...idx), hi = Math.max(...idx);
+    const shown = []; for(let i=lo;i<=hi;i++) shown.push(i);
+    h += `<div class="bt-chart" role="img" aria-label="Busyness by hour">${shown.map(i=>{
+      const v = hours[i]; const hh = v==null?2:Math.max(3,v);
+      const inQ = w.quiet && i>=w.quiet.start && i<w.quiet.end, inP = w.peak && i>=w.peak.start && i<w.peak.end;
+      return `<div class="bt-bar ${inQ?'quiet':''} ${inP?'peak':''} ${(st.day===todayIdx && i===nowH)?'now':''}" style="height:${hh}%;" title="${btHourLabel(i)}: ${v==null?'closed':v+'%'}"></div>`;
+    }).join('')}</div>
+    <div class="bt-axis">${shown.map(i=>`<span>${(i-lo)%3===0 ? (i%12===0?12:i%12) : ''}</span>`).join('')}</div>`;
+    h += `<div class="bt-sum">
+      ${w.quiet? `<span class="bt-pill q">Quietest: ${btRangeLabel(w.quiet)}</span>`:''}
+      ${w.peak? `<span class="bt-pill p">Peak: ${btRangeLabel(w.peak)}</span>`:''}
+      ${d.open? `<span class="bt-pill n">Open ${escapeHtml(d.open)}</span>`:''}
+    </div>`;
+  }
+  if(st.live){
+    const L = st.live;
+    h += `<p class="muted-note" style="margin:6px 0;">${L.available? `Right now: <b>${L.live}% busy</b>${L.fc!=null? ` (usual for this hour: ${L.fc}%)`:''}` : 'Live busyness is not available for this venue right now.'}</p>`;
+  } else {
+    h += `<button type="button" class="btn btn-sm" ${st.loadingLive?'disabled':''} onclick="btLive('${tripId}','${item.id}')">${st.loadingLive?'Checking...':'Check live busyness now'}</button>`;
+  }
+  h += `<p class="muted-note" style="font-size:11.5px;margin:8px 0 0;">Relative scale: 100% is this venue's busiest hour of the week. Forecast from BestTime.app${st.data.name? ' for '+escapeHtml(st.data.name):''}.</p>`;
+  return h;
+}
+function btRefresh(tripId, itemId){
+  const el = document.getElementById('bt-section');
+  const item = flFindItem(tripId, itemId);
+  if(el && item) el.innerHTML = btInner(tripId, item);
+}
+function btSetDay(tripId, itemId, d){ BT_UI[itemId].day = d; btRefresh(tripId, itemId); }
+function btErrText(status, msg){
+  const m = String(msg||'').toLowerCase();
+  if(status===401 || /api key|unauthor|invalid key/.test(m)) return 'BestTime rejected the API key. Check that you pasted the private key.';
+  if(status===429) return 'BestTime is rate-limiting requests. Please wait a minute and try again.';
+  if(status===402 || /credit|quota|limit|payment|subscription/.test(m)) return 'Your BestTime credits look used up for now. Check your BestTime account.';
+  if(/not found|no venue|no result|could not find|not enough|no data|foot ?traffic/.test(m)) return 'BestTime has no busy-times data for this venue. Try adding the full street address below.';
+  return msg ? 'BestTime says: '+msg : 'BestTime could not return data for this venue.';
+}
+async function btResolveAddress(item, trip){
+  try{
+    let pid = item.placeId || await resolvePlaceId(item);
+    if(!pid) return '';
+    const res = await fetch('https://places.googleapis.com/v1/places/'+pid, { headers: { 'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY, 'X-Goog-FieldMask': 'formattedAddress' } });
+    if(!res.ok) return '';
+    const j = await res.json();
+    return j.formattedAddress || '';
+  }catch(e){ return ''; }
+}
+async function btCheck(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = flFindItem(tripId, itemId);
+  const st = BT_UI[itemId];
+  if(!item || !st || st.loading) return;
+  const keyEl = document.getElementById('bt-key');
+  if(keyEl && keyEl.value.trim() && keyEl.value.trim() !== btGetKey()) btSaveKey();
+  const key = btGetKey();
+  if(!key){ st.err = 'Add your BestTime API key below first.'; btRefresh(tripId, itemId); return; }
+  const addrEl = document.getElementById('bt-addr');
+  st.addr = addrEl ? addrEl.value.trim() : (st.addr||'');
+  st.loading = true; st.err = null; btRefresh(tripId, itemId);
+  let address = st.addr || await btResolveAddress(item, trip);
+  if(!address) address = ((trip && trip.countries)||[]).join(', ');
+  try{
+    const params = new URLSearchParams({ api_key_private: key, venue_name: item.name, venue_address: address });
+    const res = await fetch('https://besttime.app/api/v1/forecasts?'+params.toString(), { method:'POST' });
+    let j = null; try{ j = await res.json(); }catch(e){}
+    if(!res.ok || !j || j.status !== 'OK'){
+      st.err = btErrText(res.status, j && (j.message || j.error));
+      st.needAddr = true;
+    } else {
+      const norm = btNormalize(j);
+      if(!norm){ st.err = 'BestTime returned data in an unexpected format.'; }
+      else { st.data = norm; st.needAddr = false; btCacheSet(item, norm); }
+    }
+  }catch(e){
+    st.err = 'Could not reach BestTime (network or browser restriction). Please try again later.';
+  }
+  st.loading = false;
+  btRefresh(tripId, itemId);
+}
+async function btLive(tripId, itemId){
+  const st = BT_UI[itemId];
+  const key = btGetKey();
+  if(!st || !st.data || !key || !st.data.venueId) return;
+  st.loadingLive = true; btRefresh(tripId, itemId);
+  try{
+    const params = new URLSearchParams({ api_key_private: key, venue_id: st.data.venueId });
+    const res = await fetch('https://besttime.app/api/v1/forecasts/live?'+params.toString(), { method:'POST' });
+    const j = await res.json().catch(()=>null);
+    if(res.ok && j && j.status==='OK' && j.analysis){
+      st.live = { available: !!j.analysis.venue_live_busyness_available, live: j.analysis.venue_live_busyness, fc: j.analysis.venue_forecasted_busyness };
+    } else {
+      st.err = btErrText(res.status, j && (j.message || j.error));
+    }
+  }catch(e){ st.err = 'Could not reach BestTime for live data.'; }
+  st.loadingLive = false;
+  btRefresh(tripId, itemId);
+}
+
+/* ============ FEATURE 3: TAX & VAT REFUND CALCULATOR ============ */
+// ESTIMATES ONLY. Rates and minimum spends were cross-checked against public guides in Oct 2026
+// (Prive VAT guide updated Jul 2026, Schiphol / Planet / Zapptax / Frankfurt Airport pages).
+// Fee model (fee, feeMin, cash) is an APPROXIMATION of operator norms (Global Blue / Planet keep
+// roughly a quarter of the VAT, with a minimum fee); it is NOT an official tariff.
+// v:1 = rate and minimum spend seen in at least one current published source;
+// v:0 = partly approximated or sources disagree - the UI marks these "check".
+// Fields: n name, al aliases, cur currency, std/red VAT %, redLabel, min minimum single-receipt spend (0 = none),
+//         fee % of VAT retained, feeMin flat minimum fee, cash extra % of VAT retained for cash refunds.
+const TX_EU_RULES = [
+  'Goods must be unused and in your luggage; customs may ask to see them, so keep them handy until you have the stamp.',
+  'Bring your passport, the original receipts and the tax-free form from the shop.',
+  'Shop receipts normally must be from one store; you usually cannot combine different shops to reach the minimum.',
+  'You must normally live outside the EU, and take the goods out of the EU within 3 months of the end of the month of purchase.'
+];
+const TAX_REFUND_DATA = {
+  lastVerified: '2026-10-12',
+  disclaimer: 'Estimate only, not legal or financial advice. Rates, minimum spends, fees and opening hours change; confirm with the shop, the refund operator (Global Blue, Planet, Innova) and customs before relying on any figure.',
+  sources: [
+    { n:'Prive: VAT refund rates and minimum spend by country (Jul 2026)', u:'https://www.withprive.com/en/blog/vat-refund-rates-by-country' },
+    { n:'Schiphol: tax refund', u:'https://www.schiphol.com/en/at-schiphol/services/tax-refund' },
+    { n:'Planet / Tax Free refund locations', u:'https://taxfree.weareplanet.com/refund-locations' },
+    { n:'Zapptax: Paris CDG exit-point guide', u:'https://exit-point-guides.zapptax.com/en/CDG/' },
+    { n:'Frankfurt Airport: VAT refund', u:'https://www.frankfurt-airport.com/en/at-the-airport/facilities-services/vat-refund.html' },
+    { n:'Global Blue: shop tax free by destination', u:'https://www.globalblue.com/en/shoppers/how-to-shop-tax-free/destinations' }
+  ],
+  countries: {
+    NL:{ n:'Netherlands', cur:'EUR', std:21, red:9, redLabel:'reduced 9% (food, books)', min:50, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Tax-free form from the shop, validated by Dutch Customs before you leave the EU, then refunded by the operator (desk, card refund mailbox or app). Dutch Customs has been moving towards a digital/app process, so check Schiphol\'s tax-refund page before flying.',
+      stamp:'Customs at the departure airport before you check in bags. At land borders use the customs office on the way out of the EU. If your last EU stop is another country, get it stamped there.',
+      desks:'Global Blue, Planet, Innova (Travelex handles Planet/Innova desks at Schiphol).',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Amsterdam Schiphol (AMS)', w:'Customs: Departure Hall 3, 1st floor near check-in 30, and airside near Lounge 3 (start of Pier F). Refund desks in Departure Hall 3.', h:'Planet desk (Departures 3): 06:00-22:00 daily. Travelex desk (Lounge 3): 06:00-20:00 daily. Customs desks follow flight operating hours. Verify on the day.' }] },
+    FR:{ n:'France', cur:'EUR', std:20, red:5.5, redLabel:'reduced 5.5% (food, books)', min:100.01, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Digital system (PABLO). Ask the shop for a tax-free form with a barcode; scan it at a PABLO kiosk before check-in. Green screen = validated; otherwise go to the customs officer nearby. Then claim the refund via the operator.',
+      stamp:'PABLO kiosk / customs office at the departure airport (before check-in if goods are in hold luggage). At other EU exit points use that country\'s customs.',
+      desks:'Global Blue, Planet, Innova; Zapptax-type digital apps also exist.',
+      rules:TX_EU_RULES.concat(['The minimum is strictly more than EUR 100 at one participating retailer (some sources allow grouping over up to 3 consecutive days; confirm with the shop).']),
+      airports:[{ n:'Paris Charles de Gaulle (CDG)', w:'Terminal 2E: PABLO kiosks and a customs office on Departures level 2, between check-in zones 3 and 4. The PABLO kiosk in 2D was reported out of service; use the customs desk or 2E.', h:'T2E PABLO kiosk about 06:00-22:00, customs about 06:00-21:00 (sources differ slightly; hours may change). No customs service late at night.' }] },
+    DE:{ n:'Germany', cur:'EUR', std:19, red:7, redLabel:'reduced 7% (food, books)', min:50.01, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Get the form from the shop, have the German customs (Zoll) stamp it when leaving the EU, then claim from the operator. Goods in checked baggage must be shown to customs before you check in.',
+      stamp:'Zoll export office at the departure airport (near your departure gate/hall), or the border customs office by land.',
+      desks:'Global Blue, Planet (Premier Tax Free), Innova.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Frankfurt (FRA)', w:'Terminal 1: Zoll office near your departure gate. Planet counter at Terminal 1, Area C, Level 2. Hand-luggage goods up to EUR 5,000 are handled at the export office in Departure Hall C; above EUR 5,000 in Transit Area B.', h:'Planet counter 06:00-21:00 daily. Zoll office hours: see zoll.de or the airport page (hours vary).' }] },
+    IT:{ n:'Italy', cur:'EUR', std:22, red:10, redLabel:'reduced 10%', min:70.01, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Digital system (OTELLO): the shop issues an electronic invoice with a barcode; validate it at a customs kiosk at your exit airport, then claim via the operator.',
+      stamp:'Customs (Agenzia delle Dogane) kiosk/desk at the exit airport. Show goods if asked.',
+      desks:'Global Blue, Planet, Innova.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Rome Fiumicino (FCO)', w:'Customs/OTELLO validation in the departures area (Terminal 3 for most long-haul); follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' },
+                { n:'Milan Malpensa (MXP)', w:'Customs/OTELLO validation in departures; follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' }] },
+    ES:{ n:'Spain', cur:'EUR', std:21, red:10, redLabel:'reduced 10% (food, hotels)', min:0, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Digital system (DIVA): the shop issues a tax-free form with a barcode; validate it at a DIVA kiosk at the airport before you leave the EU, then claim via the operator. No minimum spend since 2018.',
+      stamp:'DIVA kiosk (customs) at the departure airport, before check-in if goods are in hold luggage.',
+      desks:'Global Blue, Planet, Innova.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Madrid Barajas (MAD)', w:'DIVA customs kiosks in the departures areas (Terminals 1 and 4); follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' },
+                { n:'Barcelona El Prat (BCN)', w:'DIVA customs kiosks in Terminal 1 and Terminal 2 departures.', h:'Hours vary - check the operator\'s website.' }] },
+    PT:{ n:'Portugal', cur:'EUR', std:23, red:6, redLabel:'reduced 6%', min:50, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Digital e-Taxfree system: the shop issues an electronic form; validate it at the customs kiosk/desk at your exit airport, then claim via the operator.',
+      stamp:'Customs (Alfandega) validation at the departure airport.',
+      desks:'Global Blue, Planet, Innova.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Lisbon (LIS)', w:'Customs/e-Taxfree validation in the departures area; follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' }] },
+    BE:{ n:'Belgium', cur:'EUR', std:21, red:6, redLabel:'reduced 6%', min:125, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, validated by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs desk at the departure airport (e.g. Brussels) or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Brussels (BRU)', w:'Customs desk in the departures hall; follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' }] },
+    AT:{ n:'Austria', cur:'EUR', std:20, red:10, redLabel:'reduced 10%', min:75.01, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs counters at the departure airport or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Vienna (VIE)', w:'Customs counters in the departures check-in area; follow "Customs / Tax Free" signs.', h:'Hours vary - check the operator\'s website.' }] },
+    CZ:{ n:'Czechia', al:['czech republic'], cur:'CZK', std:21, red:12, redLabel:'reduced 12%', min:2001, fee:25, feeMin:70, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at the departure airport (e.g. Prague) or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Prague (PRG)', w:'Customs counter in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    GR:{ n:'Greece', cur:'EUR', std:24, red:13, redLabel:'reduced 13%', min:50, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at the departure airport or port.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Athens (ATH)', w:'Customs desk in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    PL:{ n:'Poland', cur:'PLN', std:23, red:8, redLabel:'reduced 8%', min:200, fee:25, feeMin:12, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop (Poland has an electronic TAX FREE system), validated by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at the departure airport or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Warsaw Chopin (WAW)', w:'Customs counter in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    HU:{ n:'Hungary', cur:'HUF', std:27, red:5, redLabel:'reduced 5% (some food, books)', min:94001, fee:25, feeMin:1000, cash:3, v:0, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator. Published minimum spends differ between sources (54,001 vs 94,001 HUF); the higher one is used here.',
+      stamp:'Customs at the departure airport or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Budapest (BUD)', w:'Customs counter in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    DK:{ n:'Denmark', cur:'DKK', std:25, red:null, min:300, fee:25, feeMin:25, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at Copenhagen Airport or the border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Copenhagen (CPH)', w:'Customs counter in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    SE:{ n:'Sweden', cur:'SEK', std:25, red:12, redLabel:'reduced 12% (food, hotels)', min:200, fee:25, feeMin:30, cash:3, v:0, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator. The minimum shown (about SEK 200) is approximate.',
+      stamp:'Customs at the departure airport or border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Stockholm Arlanda (ARN)', w:'Customs counter in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    FI:{ n:'Finland', cur:'EUR', std:25.5, red:14, redLabel:'reduced 14% (food)', min:40, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, stamped by customs when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at Helsinki-Vantaa or the border.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Helsinki-Vantaa (HEL)', w:'Customs counter in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    IE:{ n:'Ireland', cur:'EUR', std:23, red:13.5, redLabel:'reduced 13.5%', min:0, fee:25, feeMin:3, cash:3, v:1, kind:'refund',
+      sys:'Form from the shop, validated at the Irish customs/refund point when leaving the EU, then claimed via the operator.',
+      stamp:'Customs at Dublin Airport or the port. Validate at the last EU exit point if you connect through another EU country.',
+      desks:'Global Blue, Planet.',
+      rules:TX_EU_RULES,
+      airports:[{ n:'Dublin (DUB)', w:'Customs/refund counter in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    NO:{ n:'Norway', cur:'NOK', std:25, red:15, redLabel:'reduced 15% (food)', min:315, fee:25, feeMin:35, cash:3, v:1, kind:'refund',
+      sys:'Non-EU. The shop gives a tax-free form; customs stamps it when you leave Norway (goods must be exported within one month of purchase), then claim via the operator.',
+      stamp:'Customs at the departure airport or border, before check-in if goods are in hold luggage.',
+      desks:'Global Blue, Planet.',
+      rules:['Goods must be unused and shown to customs, so do this before checking in bags.','Bring your passport, receipts and tax-free form.','Norway is outside the EU; the export window is shorter than in the EU (about one month; confirm).'],
+      airports:[{ n:'Oslo Gardermoen (OSL)', w:'Customs counter in the departures area; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    CH:{ n:'Switzerland', cur:'CHF', std:8.1, red:2.6, redLabel:'reduced 2.6% (food, books)', min:300, fee:25, feeMin:5, cash:3, v:1, kind:'refund',
+      sys:'Non-EU. Ask the shop for the Swiss export form; Swiss customs stamps it when you leave Switzerland, then claim from the shop or operator (some shops deduct VAT only after the stamp).',
+      stamp:'Customs counter at Zurich/Geneva airport or the border crossing; goods must be shown.',
+      desks:'Global Blue and shop-run refund points.',
+      rules:['Minimum CHF 300 including VAT per shop and day.','Goods must be exported within 30 days of purchase.','Bring your passport and the export form; goods must be shown to customs.'],
+      airports:[{ n:'Zurich (ZRH)', w:'Customs counter in the departures check-in area (before security) and refund desk; follow "Customs / Zoll" signs.', h:'Hours vary - check the operator\'s website.' }] },
+    UK:{ n:'United Kingdom', al:['uk','england','scotland','wales','great britain','britain'], cur:'GBP', std:20, red:5, min:0, v:1, kind:'none',
+      noneMsg:'The UK ended VAT-free shopping for tourists on 1 January 2021, so there is no tourist VAT refund on high-street purchases. Airside duty-free is a separate scheme.',
+      sys:'', stamp:'', desks:'', rules:[], airports:[] },
+    MY:{ n:'Malaysia', cur:'MYR', std:10, red:null, min:0, v:0, kind:'none',
+      noneMsg:'No general tourist sales-tax refund scheme could be confirmed for Malaysia. Check Royal Malaysian Customs for any current scheme.',
+      sys:'', stamp:'', desks:'', rules:[], airports:[] },
+    SG:{ n:'Singapore', cur:'SGD', std:9, red:null, min:100, fee:15, feeMin:3, cash:0, v:0, kind:'refund',
+      sys:'GST refund via the eTRS (electronic Tourist Refund Scheme): the shop issues an eTRS ticket, you validate it at an eTRS self-help kiosk at Changi (customs may inspect goods), then collect the refund from the operator counter or on your card.',
+      stamp:'eTRS self-help kiosk at Changi Airport before immigration (if goods are in hold luggage, validate before check-in).',
+      desks:'Global Blue, Planet.',
+      rules:['Minimum spend about SGD 100 (including GST) at one retailer in one day.','Goods usually must leave Singapore within 2 months of purchase, by air only for GST refund.','Operator fee and cash/card difference shown are approximate.'],
+      airports:[{ n:'Singapore Changi (SIN)', w:'eTRS kiosks in the departure halls of each terminal; refund counters after immigration.', h:'Hours vary - check the operator\'s website.' }] },
+    JP:{ n:'Japan', cur:'JPY', std:10, red:8, redLabel:'reduced 8% (food)', min:5000, fee:5, feeMin:0, cash:0, v:0, kind:'refund',
+      sys:'Historically tax-free at the shop counter with your passport. Reportedly from 1 November 2026 Japan moves to pay-tax-first and refund-at-the-airport; check the latest rules and your retailer before you buy.',
+      stamp:'Customs digital check at the airport (with the new system, a QR/receipt scan at an airport refund counter).',
+      desks:'Japan Tax-free Shop network; operators vary.',
+      rules:['Minimum about JPY 5,000 per store per day (excluding tax), passport required.','Goods must be taken out of Japan within 6 months.','Consumables may be sealed in a bag until you leave Japan.'],
+      airports:[{ n:'Tokyo Narita (NRT) / Haneda (HND)', w:'Refund counters in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    KR:{ n:'South Korea', al:['korea'], cur:'KRW', std:10, red:null, min:15000, fee:20, feeMin:1000, cash:0, v:0, kind:'refund',
+      sys:'Instant refund at participating shops or a post-departure refund via a kiosk at the airport (customs may check goods).',
+      stamp:'Customs/kiosk at the airport before departing.',
+      desks:'Global Tax Free and other operators.',
+      rules:['Minimum about KRW 15,000 per store.','Goods must leave Korea within 3 months of purchase, in luggage.','Passport required.'],
+      airports:[{ n:'Seoul Incheon (ICN)', w:'Refund kiosks and customs in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    TH:{ n:'Thailand', cur:'THB', std:7, red:null, min:2000, fee:0, feeMin:100, cash:0, v:0, kind:'refund',
+      sys:'VAT Refund for Tourists (VRT): get VAT invoices from shops with the VAT refund sign; present the goods and forms at the VAT Refund counter at the airport.',
+      stamp:'VAT refund counter at the airport (goods may be inspected, so keep them in carry-on).',
+      desks:'Thai Revenue Department counters.',
+      rules:['Minimum about THB 2,000 per invoice, and about THB 5,000 in total per claim.','Goods must leave Thailand within 60 days of purchase.','Passport required.'],
+      airports:[{ n:'Bangkok Suvarnabhumi (BKK)', w:'VAT refund counter in the departures area.', h:'Hours vary - check the operator\'s website.' }] },
+    AU:{ n:'Australia', cur:'AUD', std:10, red:null, min:300, fee:0, feeMin:0, cash:0, v:0, kind:'refund',
+      sys:'Tourist Refund Scheme (TRS): claim the GST on goods bought within 60 days before departure at the TRS facility in the international terminal.',
+      stamp:'TRS facility at the airport (goods carried as hand luggage must be shown).',
+      desks:'Australian Border Force TRS counters.',
+      rules:['Minimum AUD 300 from one business (may combine invoices from the same business within 60 days).','Claim within 60 days of purchase and carry goods onto the plane.'],
+      airports:[{ n:'Sydney (SYD) / Melbourne (MEL)', w:'TRS facility in the international departures area (before immigration).', h:'Hours vary - check the operator\'s website.' }] },
+    TR:{ n:'Turkey', al:['turkiye','türkiye'], cur:'TRY', std:20, red:10, redLabel:'reduced 10%', min:1000, fee:25, feeMin:0, cash:3, v:0, kind:'refund',
+      sys:'Form from the shop (Global Blue), stamped by customs at the exit point, then refunded at the airport desk or by card. The TRY minimum is revised often; confirm it.',
+      stamp:'Customs at the airport before check-in.',
+      desks:'Global Blue.',
+      rules:['Goods must be exported within 3 months of purchase.','Passport required.'],
+      airports:[{ n:'Istanbul (IST)', w:'Customs and refund desks in departures; follow signs.', h:'Hours vary - check the operator\'s website.' }] },
+    AE:{ n:'United Arab Emirates', al:['uae','dubai','abu dhabi'], cur:'AED', std:5, red:null, min:250, fee:15, feeMin:5, cash:0, v:0, kind:'refund',
+      sys:'Tourist VAT refund via Planet-run self-service kiosks at the airport (goods may be inspected by customs).',
+      stamp:'Planet kiosks in departures; some shops need a stamp/validation first.',
+      desks:'Planet.',
+      rules:['Minimum about AED 250 per invoice (older source; confirm).','Goods must leave the UAE within 90 days of purchase.','Passport required.'],
+      airports:[{ n:'Dubai (DXB)', w:'Kiosks in the departure halls.', h:'Hours vary - check the operator\'s website.' }] }
+  }
+};
+const TX_NO_DECIMAL = ['JPY','KRW','HUF'];
+const TX_METHOD_LABEL = { card:'Card / bank refund', cash:'Cash refund' };
+function txFmt(amount, cur){
+  const dp = TX_NO_DECIMAL.indexOf(cur) >= 0 ? 0 : 2;
+  try{ return new Intl.NumberFormat('en', { style:'currency', currency:cur, minimumFractionDigits:dp, maximumFractionDigits:dp }).format(amount); }
+  catch(e){ return cur+' '+Number(amount).toFixed(dp); }
+}
+function txRound(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
+// Pure: refund maths for one tax-inclusive receipt.
+//   VAT contained = price * rate / (1 + rate); fee = max(feeMin, VAT * fee%) (cash adds a few points), capped at VAT;
+//   net refund = VAT - fee; price after refund = price - net refund.
+function taxCompute(country, price, opts){
+  opts = opts || {};
+  const c = typeof country === 'string' ? TAX_REFUND_DATA.countries[country] : country;
+  price = Number(price) || 0;
+  const base = { price, rate:0, vat:0, fee:0, net:0, after:price, savedPct:0, eligible:false, reason:'', minSpend:0, cur: c ? c.cur : '' };
+  if(!c) { base.reason = 'unknown'; return base; }
+  if(c.kind === 'none'){ base.reason = 'none'; return base; }
+  const rate = (opts.reduced && c.red != null) ? c.red : c.std;
+  const vatRaw = price * (rate/100) / (1 + rate/100);
+  base.rate = rate; base.vat = txRound(vatRaw); base.minSpend = c.min || 0;
+  if(price <= 0){ base.reason = 'empty'; return base; }
+  if(c.min && price < c.min){ base.reason = 'min'; return base; }
+  const pct = (c.fee||0) + (opts.method === 'cash' ? (c.cash||0) : 0);
+  const feeRaw = Math.min(vatRaw, Math.max(c.feeMin||0, vatRaw * pct/100));
+  const netRaw = vatRaw - feeRaw;
+  base.fee = txRound(feeRaw); base.net = txRound(netRaw);
+  base.after = txRound(price - netRaw);
+  base.savedPct = price ? txRound(netRaw / price * 100) : 0;
+  base.eligible = true;
+  return base;
+}
+function taxTripCountryCodes(){
+  const found = [];
+  const cs = TAX_REFUND_DATA.countries;
+  (data.trips||[]).forEach(t=>{
+    const hay = ((t.countries||[]).join(' | ') + ' | ' + (t.name||'')).toLowerCase();
+    Object.keys(cs).forEach(code=>{
+      const names = [cs[code].n.toLowerCase()].concat((cs[code].al||[]).map(a=>a.toLowerCase()));
+      if(names.some(n=> new RegExp('(^|[^a-z])'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'([^a-z]|$)').test(hay)) && found.indexOf(code)<0) found.push(code);
+    });
+  });
+  return found;
+}
+const TX = { scope:'all', method:'card', rows:[] };
+function txCodesForScope(){
+  const all = Object.keys(TAX_REFUND_DATA.countries).sort((a,b)=>TAX_REFUND_DATA.countries[a].n.localeCompare(TAX_REFUND_DATA.countries[b].n));
+  if(TX.scope !== 'trip') return all;
+  const mine = taxTripCountryCodes();
+  return mine.length ? mine : all;
+}
+function openTaxRefundModal(){
+  const mine = taxTripCountryCodes();
+  TX.scope = mine.length ? 'trip' : 'all';
+  TX.method = 'card';
+  TX.rows = [{ code: (mine[0] || 'NL'), price:'', reduced:false }];
+  openModal(`
+    <div class="modal-header"><h3>🧾 Tax Refund Calculator</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="tx-wrap" id="tx-body">${txBodyHtml()}</div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">Close</button></div>`, true);
+  txRenderResults();
+}
+function txBodyHtml(){
+  const codes = txCodesForScope();
+  const cs = TAX_REFUND_DATA.countries;
+  const mine = taxTripCountryCodes();
+  TX.rows.forEach(r=>{ if(codes.indexOf(r.code)<0) r.code = codes[0]; });
+  return `
+    <div class="tx-chips">
+      <button type="button" class="chip-opt ${TX.scope==='trip'?'on':''}" onclick="txSetScope('trip')">My trip countries${mine.length? ' ('+mine.length+')':''}</button>
+      <button type="button" class="chip-opt ${TX.scope==='all'?'on':''}" onclick="txSetScope('all')">All countries</button>
+    </div>
+    <div class="tx-chips">
+      ${Object.keys(TX_METHOD_LABEL).map(m=>`<button type="button" class="chip-opt ${TX.method===m?'on':''}" onclick="txSetMethod('${m}')">${TX_METHOD_LABEL[m]}</button>`).join('')}
+    </div>
+    <p class="muted-note" style="margin:0 0 8px;font-size:12px;">Each row is one store receipt, with the price including tax, in the country's local currency.</p>
+    ${TX.rows.map((r,i)=>{
+      const c = cs[r.code];
+      return `<div class="tx-row">
+        <select onchange="txSetRow(${i},'code',this.value)">${codes.map(k=>`<option value="${k}" ${k===r.code?'selected':''}>${escapeHtml(cs[k].n)} (${cs[k].cur})</option>`).join('')}</select>
+        <input type="number" inputmode="decimal" min="0" step="any" placeholder="Price (${c.cur})" value="${escapeHtml(r.price)}" oninput="txSetRow(${i},'price',this.value)">
+        ${c.red!=null ? `<label class="tx-check" title="${escapeHtml(c.redLabel||'Reduced rate')}"><input type="checkbox" ${r.reduced?'checked':''} onchange="txSetRow(${i},'reduced',this.checked)"> Reduced</label>` : '<span></span>'}
+        ${TX.rows.length>1 ? `<button type="button" class="tx-x" onclick="txDelRow(${i})" aria-label="Remove item">&times;</button>` : '<span></span>'}
+      </div>`;
+    }).join('')}
+    <button type="button" class="btn btn-sm" onclick="txAddRow()">+ Add another receipt</button>
+    <div id="tx-results"></div>`;
+}
+function txRerender(){
+  const el = document.getElementById('tx-body');
+  if(el){ el.innerHTML = txBodyHtml(); txRenderResults(); }
+}
+function txSetScope(s){ TX.scope = s; txRerender(); }
+function txSetMethod(m){ TX.method = m; txRerender(); }
+function txAddRow(){ const last = TX.rows[TX.rows.length-1]; TX.rows.push({ code: last? last.code : 'NL', price:'', reduced:false }); txRerender(); }
+function txDelRow(i){ TX.rows.splice(i,1); if(!TX.rows.length) TX.rows.push({ code:txCodesForScope()[0], price:'', reduced:false }); txRerender(); }
+function txSetRow(i, key, val){
+  if(!TX.rows[i]) return;
+  TX.rows[i][key] = val;
+  if(key === 'code') txRerender(); else txRenderResults();
+}
+function txResultsHtml(){
+  const cs = TAX_REFUND_DATA.countries;
+  const totals = {};
+  let html = '';
+  TX.rows.forEach((r,i)=>{
+    const c = cs[r.code];
+    if(!c) return;
+    const res = taxCompute(c, r.price, { reduced:r.reduced, method:TX.method });
+    if(res.reason === 'none'){
+      html += `<div class="tx-res bad"><b>${escapeHtml(c.n)}</b><div class="muted-note" style="margin-top:4px;">${escapeHtml(c.noneMsg||'No tourist refund available.')}</div></div>`;
+      return;
+    }
+    if(res.reason === 'empty') return;
+    if(res.reason === 'min'){
+      html += `<div class="tx-res bad"><b>Receipt ${i+1}: ${escapeHtml(c.n)}</b><div style="margin-top:4px;">Not eligible. Minimum spend ${txFmt(c.min, c.cur)} per receipt (you entered ${txFmt(res.price, c.cur)}).</div></div>`;
+      return;
+    }
+    const t = totals[r.code] || (totals[r.code] = { price:0, net:0, after:0, vat:0, fee:0 });
+    t.price += res.price; t.net += res.net; t.after += res.after; t.vat += res.vat; t.fee += res.fee;
+    html += `<div class="tx-res">
+      <div style="font-weight:700;margin-bottom:6px;">Receipt ${i+1}: ${escapeHtml(c.n)} ${c.v?'':'<span class="tx-tag">check figures</span>'}</div>
+      <div class="tx-kv"><span>Price paid (tax included)</span><b>${txFmt(res.price, c.cur)}</b></div>
+      <div class="tx-kv"><span>VAT contained (${res.rate}%)</span><b>${txFmt(res.vat, c.cur)}</b></div>
+      <div class="tx-kv"><span>Operator fee (estimate)</span><b>- ${txFmt(res.fee, c.cur)}</b></div>
+      <div class="tx-kv"><span>Net tax refund</span><b class="tx-big" style="color:var(--success);">${txFmt(res.net, c.cur)}</b></div>
+      <div class="tx-kv"><span>Item price after refund</span><b class="tx-big">${txFmt(res.after, c.cur)}</b></div>
+      <div class="tx-kv"><span>Effective saving</span><b>${res.savedPct}% of price</b></div>
+    </div>`;
+  });
+  const keys = Object.keys(totals);
+  if(TX.rows.length > 1 && keys.length){
+    html += `<div class="tx-res"><div style="font-weight:700;margin-bottom:6px;">Totals by country</div>${keys.map(k=>{
+      const c = cs[k], t = totals[k];
+      return `<div style="margin-bottom:6px;"><b>${escapeHtml(c.n)}</b>
+        <div class="tx-kv"><span>Total paid</span><b>${txFmt(txRound(t.price), c.cur)}</b></div>
+        <div class="tx-kv"><span>Total net refund</span><b>${txFmt(txRound(t.net), c.cur)}</b></div>
+        <div class="tx-kv"><span>Total after refund</span><b>${txFmt(txRound(t.after), c.cur)}</b></div></div>`;
+    }).join('')}</div>`;
+  }
+  // Where & how to claim, once per distinct country
+  const seen = [];
+  TX.rows.forEach(r=>{ if(seen.indexOf(r.code)<0) seen.push(r.code); });
+  html += `<div class="section-title" style="margin-top:16px;">Where &amp; how to claim</div>`;
+  seen.forEach(code=>{
+    const c = cs[code];
+    if(!c || c.kind==='none') return;
+    html += `<div class="tx-guide"><b>${escapeHtml(c.n)}</b> ${c.v?'':'<span class="tx-tag">partly approximated</span>'}
+      <p style="margin:6px 0;"><b>How it works:</b> ${escapeHtml(c.sys)}</p>
+      <p style="margin:6px 0;"><b>Customs stamp / validation:</b> ${escapeHtml(c.stamp)}</p>
+      <p style="margin:6px 0;"><b>Operators:</b> ${escapeHtml(c.desks)}</p>
+      <ul>${c.rules.map(x=>`<li>${escapeHtml(x)}</li>`).join('')}</ul>
+      ${c.airports.map(a=>`<p style="margin:6px 0;"><b>${escapeHtml(a.n)}</b><br>${escapeHtml(a.w)}<br><span class="muted-note">${escapeHtml(a.h||'Hours vary - check the operator\'s website.')}</span></p>`).join('')}
+    </div>`;
+  });
+  html += `<p class="muted-note" style="font-size:11.5px;margin-top:14px;"><b>Estimate only.</b> ${escapeHtml(TAX_REFUND_DATA.disclaimer)} Last verified ${escapeHtml(TAX_REFUND_DATA.lastVerified)}. Fees shown are typical norms (operators keep roughly a quarter of the VAT, with a minimum), not an official tariff. Sources: ${TAX_REFUND_DATA.sources.map(s=>`<a href="${s.u}" target="_blank" rel="noopener">${escapeHtml(s.n)}</a>`).join('; ')}.</p>`;
+  return html;
+}
+function txRenderResults(){
+  const el = document.getElementById('tx-results');
+  if(el) el.innerHTML = txResultsHtml();
+}
+
+/* ============ FEATURE 4: JET LAG CIRCADIAN PLANNER ============ */
+const JL_CITIES = [
+  {n:'Singapore',c:'Singapore',tz:'Asia/Singapore'},{n:'Kuala Lumpur',c:'Malaysia',tz:'Asia/Kuala_Lumpur'},
+  {n:'Bangkok',c:'Thailand',tz:'Asia/Bangkok'},{n:'Jakarta',c:'Indonesia',tz:'Asia/Jakarta'},
+  {n:'Bali (Denpasar)',c:'Indonesia',tz:'Asia/Makassar'},{n:'Manila',c:'Philippines',tz:'Asia/Manila'},
+  {n:'Ho Chi Minh City',c:'Vietnam',tz:'Asia/Ho_Chi_Minh'},{n:'Hong Kong',c:'Hong Kong',tz:'Asia/Hong_Kong'},
+  {n:'Taipei',c:'Taiwan',tz:'Asia/Taipei'},{n:'Tokyo',c:'Japan',tz:'Asia/Tokyo'},{n:'Osaka',c:'Japan',tz:'Asia/Tokyo'},
+  {n:'Seoul',c:'South Korea',tz:'Asia/Seoul'},{n:'Beijing',c:'China',tz:'Asia/Shanghai'},{n:'Shanghai',c:'China',tz:'Asia/Shanghai'},
+  {n:'Mumbai',c:'India',tz:'Asia/Kolkata'},{n:'Delhi',c:'India',tz:'Asia/Kolkata'},{n:'Colombo',c:'Sri Lanka',tz:'Asia/Colombo'},
+  {n:'Kathmandu',c:'Nepal',tz:'Asia/Kathmandu'},{n:'Dubai',c:'United Arab Emirates',tz:'Asia/Dubai'},
+  {n:'Doha',c:'Qatar',tz:'Asia/Qatar'},{n:'Istanbul',c:'Turkey',tz:'Europe/Istanbul'},{n:'Tel Aviv',c:'Israel',tz:'Asia/Jerusalem'},
+  {n:'Cairo',c:'Egypt',tz:'Africa/Cairo'},{n:'Nairobi',c:'Kenya',tz:'Africa/Nairobi'},{n:'Johannesburg',c:'South Africa',tz:'Africa/Johannesburg'},
+  {n:'Cape Town',c:'South Africa',tz:'Africa/Johannesburg'},{n:'Casablanca',c:'Morocco',tz:'Africa/Casablanca'},
+  {n:'London',c:'United Kingdom',tz:'Europe/London'},{n:'Dublin',c:'Ireland',tz:'Europe/Dublin'},{n:'Paris',c:'France',tz:'Europe/Paris'},
+  {n:'Amsterdam',c:'Netherlands',tz:'Europe/Amsterdam'},{n:'Brussels',c:'Belgium',tz:'Europe/Brussels'},
+  {n:'Frankfurt',c:'Germany',tz:'Europe/Berlin'},{n:'Berlin',c:'Germany',tz:'Europe/Berlin'},{n:'Munich',c:'Germany',tz:'Europe/Berlin'},
+  {n:'Zurich',c:'Switzerland',tz:'Europe/Zurich'},{n:'Geneva',c:'Switzerland',tz:'Europe/Zurich'},{n:'Vienna',c:'Austria',tz:'Europe/Vienna'},
+  {n:'Prague',c:'Czechia',tz:'Europe/Prague'},{n:'Budapest',c:'Hungary',tz:'Europe/Budapest'},{n:'Warsaw',c:'Poland',tz:'Europe/Warsaw'},
+  {n:'Rome',c:'Italy',tz:'Europe/Rome'},{n:'Milan',c:'Italy',tz:'Europe/Rome'},{n:'Madrid',c:'Spain',tz:'Europe/Madrid'},
+  {n:'Barcelona',c:'Spain',tz:'Europe/Madrid'},{n:'Lisbon',c:'Portugal',tz:'Europe/Lisbon'},{n:'Athens',c:'Greece',tz:'Europe/Athens'},
+  {n:'Copenhagen',c:'Denmark',tz:'Europe/Copenhagen'},{n:'Stockholm',c:'Sweden',tz:'Europe/Stockholm'},{n:'Oslo',c:'Norway',tz:'Europe/Oslo'},
+  {n:'Helsinki',c:'Finland',tz:'Europe/Helsinki'},{n:'Reykjavik',c:'Iceland',tz:'Atlantic/Reykjavik'},{n:'Moscow',c:'Russia',tz:'Europe/Moscow'},
+  {n:'New York',c:'United States',tz:'America/New_York'},{n:'Chicago',c:'United States',tz:'America/Chicago'},
+  {n:'Los Angeles',c:'United States',tz:'America/Los_Angeles'},{n:'San Francisco',c:'United States',tz:'America/Los_Angeles'},
+  {n:'Honolulu',c:'United States',tz:'Pacific/Honolulu'},{n:'Vancouver',c:'Canada',tz:'America/Vancouver'},{n:'Toronto',c:'Canada',tz:'America/Toronto'},
+  {n:'Mexico City',c:'Mexico',tz:'America/Mexico_City'},{n:'Sao Paulo',c:'Brazil',tz:'America/Sao_Paulo'},{n:'Buenos Aires',c:'Argentina',tz:'America/Argentina/Buenos_Aires'},
+  {n:'Sydney',c:'Australia',tz:'Australia/Sydney'},{n:'Melbourne',c:'Australia',tz:'Australia/Melbourne'},{n:'Brisbane',c:'Australia',tz:'Australia/Brisbane'},
+  {n:'Perth',c:'Australia',tz:'Australia/Perth'},{n:'Auckland',c:'New Zealand',tz:'Pacific/Auckland'}
+];
+function jlHm(t){ const m = String(t||'').match(/^(\d{1,2}):(\d{2})/); return m ? (+m[1])*60 + (+m[2]) : null; }
+function jlFmt(min){ min = ((Math.round(min)%1440)+1440)%1440; return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
+function jlAddDays(dateStr, n){ const d = new Date(dateStr+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+// Pure: offset of an IANA zone from UTC in minutes at an instant (handles DST).
+function jlOffsetMin(tz, ms){
+  const dtf = new Intl.DateTimeFormat('en-US', { timeZone:tz, hourCycle:'h23', year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const p = {}; dtf.formatToParts(new Date(ms)).forEach(x=>{ p[x.type] = x.value; });
+  const asUtc = Date.UTC(+p.year, +p.month-1, +p.day, (+p.hour)%24, +p.minute, +p.second);
+  return Math.round((asUtc - Math.floor(ms/1000)*1000)/60000);
+}
+// Pure: UTC ms for a wall-clock date+time in a zone.
+function jlLocalToUtc(dateStr, timeStr, tz){
+  const [y,m,d] = dateStr.split('-').map(Number); const hm = jlHm(timeStr)||0;
+  const guess = Date.UTC(y, m-1, d, Math.floor(hm/60), hm%60);
+  let utc = guess - jlOffsetMin(tz, guess)*60000;
+  const off2 = jlOffsetMin(tz, utc); utc = guess - off2*60000;
+  return utc;
+}
+function jlSegs(a, b){ a = Math.max(0, a); b = Math.min(1440, b); return b > a ? [{ l:a/14.4, w:(b-a)/14.4 }] : []; }
+// Pure: build the whole schedule. Returns tz difference, direction ('east'|'west'|'none') and day rows.
+function jlPlan(p){
+  const date = p.date;
+  const depTime = p.depTime || '09:00', arrTime = p.arrTime || '16:00';
+  const depUtc = jlLocalToUtc(date, depTime, p.fromTz);
+  let arrUtc = null, arrDate = date;
+  for(let dd=-1; dd<=3 && arrUtc===null; dd++){
+    const ds = jlAddDays(date, dd);
+    const u = jlLocalToUtc(ds, arrTime, p.toTz);
+    if(u > depUtc + 30*60000){ arrUtc = u; arrDate = ds; }
+  }
+  const rawDiff = (jlOffsetMin(p.toTz, arrUtc) - jlOffsetMin(p.fromTz, depUtc)) / 60;
+  let nd = rawDiff; while(nd > 12) nd -= 24; while(nd <= -12) nd += 24;
+  const abs = Math.abs(nd);
+  const direction = abs < 1 ? 'none' : (nd > 0 ? 'east' : 'west');
+  const east = direction === 'east';
+  const B = jlHm(p.bed||'23:00'), W = jlHm(p.wake||'07:00');
+  const dur = ((W - B + 1440) % 1440) || 480;
+  const m = east ? -1 : 1;                 // pre-trip bedtime shift: east = earlier, west = later
+  const sgn = east ? 1 : -1;               // post-arrival: body-clock offset relative to local target
+  const rate = east ? 1 : 1.5;             // hours of adaptation per day at the destination
+  const preTotal = direction === 'none' ? 0 : Math.min(3, abs);
+  const R = abs - preTotal;
+  const estDays = direction === 'none' ? 0 : Math.ceil(abs / rate);
+  const days = [];
+  const mk = (o)=>{
+    const bed = o.bed, wake = o.wake, leftStart = Math.max(0, o.prevBed - 1440);
+    const w = {};
+    w.sleep = jlSegs(leftStart, wake).concat(bed < 1440 ? jlSegs(bed, 1440) : []);
+    const caffFrom = bed - 540;
+    w.caff = jlSegs(leftStart, wake).concat(jlSegs(caffFrom, 1440));
+    let seek, avoid;
+    if(direction === 'west'){ seek = [bed - 240, bed - 60]; avoid = [wake, wake + 120]; }
+    else { seek = [wake, wake + 180]; avoid = o.adapted ? null : [bed - 180, bed]; }
+    w.seek = jlSegs(seek[0], seek[1]); w.avoid = avoid ? jlSegs(avoid[0], avoid[1]) : [];
+    const napFrom = Math.max(wake + 360, 780), napTo = Math.min(900, bed - 480);
+    w.nap = napTo - napFrom >= 30 ? jlSegs(napFrom, napTo) : [];
+    w.mel = (east && !o.adapted && o.kind === 'post' && bed - 60 < 1440) ? (bed - 60)/14.4 : null;
+    const tips = [];
+    tips.push('Sleep ' + jlFmt(bed) + ' to ' + jlFmt(bed + dur));
+    tips.push('Seek bright light ' + jlFmt(seek[0]) + ' to ' + jlFmt(seek[1]));
+    if(avoid) tips.push('Dim lights / sunglasses ' + jlFmt(avoid[0]) + ' to ' + jlFmt(avoid[1]));
+    tips.push('No caffeine after ' + jlFmt(caffFrom) + ' (about 9 h before bed)');
+    if(w.mel !== null) tips.push('Some people use low-dose melatonin around ' + jlFmt(bed - 60) + ' after eastward travel. Ask a doctor before using it.');
+    if(w.nap.length) tips.push('If needed, nap 20-30 min between ' + jlFmt(napFrom) + ' and ' + jlFmt(napTo) + ', not later');
+    return Object.assign({}, o, { windows:w, tips, dur });
+  };
+  for(let j=1; j<=3; j++){
+    const s = Math.min(j, preTotal), ps = Math.min(j-1, preTotal);
+    const left = 4 - j;
+    days.push(mk({ kind:'pre', clock:'origin', date:jlAddDays(date, -left), label: left + (left===1 ? ' day' : ' days') + ' before departure',
+      bed: B + m*s, wake: W + m*ps, prevBed: B + m*ps, shift: m*s, adapted:false }));
+  }
+  days.push({ kind:'travel', clock:'origin', date, label:'Travel day',
+    tips:[
+      direction === 'none' ? 'Little time-zone change: keep your normal routine.' : 'Keep to your adjusted sleep schedule until boarding, then set your watch to destination time.',
+      east ? 'On the plane, try to sleep when it is night at the destination; eye mask and earplugs help.' : (direction==='west' ? 'On the plane, stay awake until it is evening at the destination if you can.' : ''),
+      'Drink water; limit alcohol; avoid caffeine in the hours before the destination night.'
+    ].filter(Boolean) });
+  for(let k=1; k<=5; k++){
+    const gapK = Math.max(0, R - rate*k), gapPrev = Math.max(0, R - rate*(k-1));
+    days.push(mk({ kind:'post', clock:'dest', date:jlAddDays(arrDate, k-1), label: k===1 ? 'Arrival day' : 'Day ' + k + ' at destination',
+      bed: B + sgn*gapK, wake: W + sgn*gapPrev, prevBed: B + sgn*gapPrev, shift: sgn*gapK, adapted: gapK === 0, gap: gapK }));
+  }
+  return { rawDiff, nd, direction, estDays, abs, rate, durationH: (arrUtc - depUtc)/3600000, arrDate, days, preTotal, big: east && abs >= 9 };
+}
+
+const JL = { from:'Singapore', to:'Amsterdam', date:'', depTime:'09:00', arrTime:'16:00', bed:'23:00', wake:'07:00' };
+function jlCity(name){ return JL_CITIES.find(c=>c.n===name) || JL_CITIES[0]; }
+function jlDefaults(){
+  const trips = sortedTrips ? sortedTrips() : data.trips;
+  const trip = (ui.homeTripId && getTrip(ui.homeTripId)) || trips[0] || null;
+  JL.from = 'Singapore'; JL.to = 'Amsterdam';
+  if(trip){
+    const cs = (trip.countries||[]).map(c=>String(c).toLowerCase());
+    let hit = null;
+    for(let i=0; i<cs.length && !hit; i++) hit = JL_CITIES.find(c => c.c.toLowerCase() === cs[i]);
+    if(hit) JL.to = hit.n;
+    const fl = (trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate && !i.isPoi && i.dateStart).sort(compareItems)[0];
+    if(fl){
+      JL.date = fl.dateStart;
+      if(fl.timeStart) JL.depTime = fl.timeStart;
+      if(fl.timeEnd) JL.arrTime = fl.timeEnd;
+    } else if(trip.startDate) JL.date = trip.startDate;
+  }
+  if(!JL.date) JL.date = addDays(todayStr(), 14);
+}
+function openJetLagModal(){
+  jlDefaults();
+  const opts = (sel)=>JL_CITIES.slice().sort((a,b)=>a.n.localeCompare(b.n)).map(c=>`<option value="${escapeHtml(c.n)}" ${c.n===sel?'selected':''}>${escapeHtml(c.n)} (${escapeHtml(c.c)})</option>`).join('');
+  openModal(`
+    <div class="modal-header"><h3>😴 Jet Lag Planner</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="jl-wrap">
+      <div class="jl-grid">
+        <div class="field"><label class="field-label">From</label><select onchange="jlSet('from',this.value)">${opts(JL.from)}</select></div>
+        <div class="field"><label class="field-label">To</label><select onchange="jlSet('to',this.value)">${opts(JL.to)}</select></div>
+        <div class="field"><label class="field-label">Departure date</label><input type="date" value="${escapeHtml(JL.date)}" onchange="jlSet('date',this.value)"></div>
+        <div class="field"><label class="field-label">Departs (from-city time)</label><input type="time" value="${escapeHtml(JL.depTime)}" onchange="jlSet('depTime',this.value)"></div>
+        <div class="field"><label class="field-label">Arrives (local time)</label><input type="time" value="${escapeHtml(JL.arrTime)}" onchange="jlSet('arrTime',this.value)"></div>
+        <div class="field"><label class="field-label">Usual bedtime</label><input type="time" value="${escapeHtml(JL.bed)}" onchange="jlSet('bed',this.value)"></div>
+        <div class="field"><label class="field-label">Usual wake time</label><input type="time" value="${escapeHtml(JL.wake)}" onchange="jlSet('wake',this.value)"></div>
+      </div>
+      <div id="jl-result"></div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-primary" onclick="closeModal()">Close</button></div>`, true);
+  jlRenderResult();
+}
+function jlSet(k, v){ JL[k] = v; jlRenderResult(); }
+function jlRenderResult(){
+  const el = document.getElementById('jl-result');
+  if(el) el.innerHTML = jlResultHtml();
+}
+function jlSegHtml(segs, cls){ return segs.map(s=>`<div class="jl-seg ${cls}" style="left:${s.l.toFixed(2)}%;width:${s.w.toFixed(2)}%;"></div>`).join(''); }
+function jlResultHtml(){
+  if(!JL.date) return '<p class="muted-note">Pick a departure date.</p>';
+  const from = jlCity(JL.from), to = jlCity(JL.to);
+  let plan;
+  try{ plan = jlPlan({ fromTz:from.tz, toTz:to.tz, date:JL.date, depTime:JL.depTime, arrTime:JL.arrTime, bed:JL.bed, wake:JL.wake }); }
+  catch(e){ return '<p class="muted-note">Could not compute a schedule for these inputs.</p>'; }
+  const hrs = Math.abs(plan.nd);
+  const hText = (Math.round(hrs*10)/10).toString().replace(/\.0$/,'');
+  const dirText = plan.direction === 'none' ? 'about the same time zone' : (plan.nd > 0 ? '+'+hText+' h (east)' : '-'+hText+' h (west)');
+  let sum = `<b>Time-zone difference: ${dirText}</b>`;
+  if(plan.direction === 'east') sum += `<br>Travelling east: your body clock needs to move earlier (advance). Roughly ${plan.estDays} day${plan.estDays===1?'':'s'} to adapt at ~1 h/day. Seek morning light, avoid evening light.`;
+  else if(plan.direction === 'west') sum += `<br>Travelling west: your body clock needs to move later (delay). Roughly ${plan.estDays} day${plan.estDays===1?'':'s'} to adapt at ~1.5 h/day. Seek evening light, avoid morning light.`;
+  else sum += '<br>Little adjustment needed.';
+  if(plan.big) sum += '<br>Large eastward shifts (9 h or more) can be easier by delaying the clock on the first days; avoid bright light very early after arrival.';
+  sum += `<br><span style="font-weight:400;">Flight time about ${Math.round(plan.durationH)} h. Time zones compared on ${escapeHtml(JL.date)} (daylight saving included).</span>`;
+  const legend = `<div class="jl-legend">
+    <span><i style="background:#4f5bd5"></i>Sleep</span><span><i style="background:#f5b301"></i>Seek bright light</span>
+    <span><i style="background:#8b8fa3"></i>Avoid bright light</span><span><i style="background:#e8407e"></i>No caffeine</span>
+    <span><i style="background:#00b3a4"></i>Nap window</span><span><i style="background:#8b5cf6"></i>Melatonin note</span></div>`;
+  const rows = plan.days.map(d=>{
+    const head = `<div class="jl-day-head"><span>${escapeHtml(d.label)}</span><small>${fmtDateShort(d.date)} ${d.clock==='origin' ? '· home clock ('+escapeHtml(from.n)+')' : '· local clock ('+escapeHtml(to.n)+')'}</small></div>`;
+    if(d.kind === 'travel') return `<div class="jl-day">${head}<div class="jl-tips">${d.tips.map(t=>`<div>${escapeHtml(t)}</div>`).join('')}</div></div>`;
+    const w = d.windows;
+    const shiftTxt = d.adapted ? 'On your normal schedule' : (d.kind==='pre' ? 'Bedtime shifted ' + (d.shift>0?'+':'') + (Math.round(d.shift*10)/10) + ' h' : 'Still adjusting (~' + (Math.round(d.gap*10)/10) + ' h to go)');
+    return `<div class="jl-day">${head}
+      <div class="muted-note" style="font-size:11.5px;">${escapeHtml(shiftTxt)}</div>
+      <div class="jl-strip" role="img" aria-label="24-hour schedule">
+        <div class="jl-lane l1">${jlSegHtml(w.sleep,'jl-sleep')}${jlSegHtml(w.nap,'jl-nap')}${w.mel!==null? `<div class="jl-mel" style="left:${w.mel.toFixed(2)}%;"></div>`:''}</div>
+        <div class="jl-lane l2">${jlSegHtml(w.seek,'jl-seek')}${jlSegHtml(w.avoid,'jl-dark')}</div>
+        <div class="jl-lane l3">${jlSegHtml(w.caff,'jl-caf')}</div>
+      </div>
+      <div class="jl-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+      <div class="jl-tips">${d.tips.map(t=>`<div>${escapeHtml(t)}</div>`).join('')}</div>
+    </div>`;
+  }).join('');
+  return `<div class="jl-sum">${sum}</div>${legend}${rows}
+    <p class="muted-note" style="font-size:11.5px;margin-top:10px;">General guidance based on common circadian-shift heuristics (about 1 h per day, light timing, caffeine cut-off about 9 h before bed). Not medical advice; talk to a doctor about melatonin or if you have a sleep or health condition.</p>`;
+}
+
 /* ============ INIT ============ */
-loadAllData().then(render);
+loadAllData().then(()=>{ render(); try{ flResumeAlerts(); }catch(e){} });
 </script>
 </body>
 </html>
