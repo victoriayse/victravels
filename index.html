@@ -6,45 +6,52 @@
 <title>VicTravels</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    /* ===== VicTravels — Apple-inspired monochrome palette. White/light-grey surfaces,
-       near-black text and primary actions, one restrained accent blue reserved for links.
-       No gradients. Every component below reads its colors from these tokens, so this
-       block is the single place the whole app's look is controlled from. ===== */
-    --bg:#ffffff;
-    --bg-soft:#f5f5f7;
+    /* ===== VicTravels 2.0 palette — indigo/teal/pink gradient accents on a light,
+       airy background, replacing the previous teal/brass travel-journal theme.
+       Every component below reads its colors from these tokens, so this block is
+       the single place the whole app's look is controlled from. ===== */
+    --bg:#f5f3ed;
+    --bg-soft:#eeeae0;
     --card-bg:#ffffff;
-    --text:#1d1d1f;
-    --text-muted:#86868b;
-    --border:#e5e5e7;
-    --border-strong:#d2d2d7;
-    --primary:#1d1d1f;
-    --primary-dark:#000000;
-    --primary-light:#f5f5f7;
-    --primary-accent:#0071e3;
-    --accent:#0071e3;
-    --accent-light:#f5f5f7;
-    --accent2:#1d1d1f;
-    --accent2-light:#f5f5f7;
-    --danger:#d70015;
-    --danger-light:#fdeeee;
-    --success:#1d1d1f;
-    --success-light:#f5f5f7;
-    --warning:#86868b;
-    --warning-light:#f5f5f7;
-    --radius:18px;
-    --radius-sm:12px;
-    --font-serif:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
-    --font-sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue",Arial,sans-serif;
-    --shadow:none;
-    --shadow-hover:none;
+    --text:#14171f;
+    --text-muted:#6b7181;
+    --border:#e9e5d8;
+    --border-strong:#dcd6c5;
+    --primary:#4f5bd5;
+    --primary-dark:#3944b0;
+    --primary-light:#ecebfb;
+    --primary-accent:#8b5cf6;
+    --accent:#00b3a4;
+    --accent-light:#e0f7f4;
+    --accent2:#e8407e;
+    --accent2-light:#fbe3ee;
+    --danger:#b3261e;
+    --danger-light:#fbe9e7;
+    --success:#00967f;
+    --success-light:#e3f7f2;
+    --warning:#b45309;
+    --warning-light:#fdf1de;
+    --radius:22px;
+    --radius-sm:14px;
+    --font-serif:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-sans:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --shadow:0 1px 2px rgba(20,23,31,0.04), 0 10px 26px -14px rgba(20,23,31,0.12);
+    --shadow-hover:0 16px 36px -10px rgba(79,91,213,0.28), 0 4px 12px rgba(20,23,31,0.08);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
     font-family:var(--font-sans);
-    background:var(--bg);
+    background:
+      radial-gradient(1000px 480px at 10% -10%, rgba(79,91,213,0.10), transparent 60%),
+      radial-gradient(900px 460px at 100% 0%, rgba(0,179,164,0.08), transparent 58%),
+      var(--bg);
+    background-attachment:fixed;
     color:var(--text);
     -webkit-font-smoothing:antialiased;
   }
@@ -60,7 +67,7 @@
   /* NAV */
   header.topbar{
     position:sticky;top:0;z-index:20;
-    background:rgba(255,255,255,0.82);
+    background:rgba(250,248,243,0.82);
     backdrop-filter:blur(10px) saturate(1.4);
     border-bottom:1px solid var(--border);
   }
@@ -68,7 +75,7 @@
      tap on a slow connection doesn't feel like it didn't register. */
   #loading-bar{
     position:fixed;top:0;left:0;height:3px;width:0;z-index:300;
-    background:var(--primary);
+    background:linear-gradient(90deg,var(--primary),var(--primary-dark));
     transition:width .3s ease, opacity .3s ease;opacity:0;pointer-events:none;
   }
   #loading-bar.active{width:70%;opacity:1;transition:width 2.2s cubic-bezier(.1,.6,.2,1), opacity .2s ease;}
@@ -94,7 +101,8 @@
   .brand-mark{
     font-size:16px;display:inline-flex;align-items:center;justify-content:center;
     width:32px;height:32px;border-radius:11px;
-    background:var(--primary);color:#fff;
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));
+    box-shadow:0 3px 8px rgba(79,91,213,0.35);
   }
   /* NAV — a fixed bottom tab bar on phone/tablet (thumb-reachable), a collapsible left
      sidebar on desktop (≥860px). Same #main-nav element and click handler/setView logic
@@ -102,9 +110,9 @@
   nav.tabs{
     position:fixed;left:14px;right:14px;bottom:14px;z-index:40;
     display:flex;align-items:stretch;gap:0;
-    background:rgba(255,255,255,0.88);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
-    border:1px solid var(--border);border-radius:30px;
-    box-shadow:0 10px 24px -14px rgba(0,0,0,0.18);
+    background:rgba(255,255,255,0.78);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+    border:1px solid rgba(20,23,31,0.06);border-radius:30px;
+    box-shadow:0 14px 30px -10px rgba(20,23,31,0.25);
     padding:6px 8px;
   }
   nav.tabs .sidebar-brand,nav.tabs .sidebar-toggle{display:none;}
@@ -121,7 +129,8 @@
   }
   nav.tabs button[data-view].active{color:var(--primary-dark);}
   nav.tabs button[data-view].active .nav-icon{
-    background:var(--primary);color:#fff;
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));color:#fff;
+    box-shadow:0 6px 14px -4px rgba(79,91,213,0.55);
   }
   nav.tabs button[data-view]:not(.active):hover{color:var(--text);}
   body{padding-bottom:88px;} /* clears the floating bottom nav */
@@ -147,7 +156,7 @@
     /* Soft flat tint instead of a solid fill — reads as "selected" without the heavier
        pill-button treatment used for actual buttons elsewhere. */
     nav.tabs button[data-view].active{
-      background:var(--bg-soft);
+      background:rgba(79,91,213,0.1);
       color:var(--primary);box-shadow:none;
     }
     nav.tabs .sidebar-toggle{
@@ -194,9 +203,10 @@
     background:var(--primary);
     color:#fff;font-size:13px;font-weight:600;
     padding:8px 16px;border-radius:999px;
-    transition:transform .18s ease;
+    box-shadow:0 4px 14px rgba(79,91,213,0.3);
+    transition:box-shadow .18s ease, transform .18s ease;
   }
-  .countdown-strip:hover .countdown-strip-pill{transform:translateY(-1px);}
+  .countdown-strip:hover .countdown-strip-pill{box-shadow:0 6px 18px rgba(79,91,213,0.4);transform:translateY(-1px);}
   .countdown-strip-icon{font-size:14px;line-height:1;display:inline-flex;}
   .countdown-strip-when{font-weight:800;background:rgba(255,255,255,0.28);padding:2px 9px;border-radius:999px;}
 
@@ -208,12 +218,14 @@
      the page's very subtle background tint, rather than a flat solid panel. Kept quiet on
      purpose: color comes from a handful of accent spots, not from every surface. */
   .card{
-    background:#ffffff;
-    border-radius:var(--radius-sm);
-    box-shadow:none;
-    border:1px solid var(--border);
+    background:rgba(255,255,255,0.86);
+    backdrop-filter:blur(14px) saturate(1.2);
+    -webkit-backdrop-filter:blur(14px) saturate(1.2);
+    border-radius:var(--radius);
+    box-shadow:0 6px 20px -14px rgba(20,23,31,0.18);
+    border:1px solid #ececef;
     padding:20px;
-    transition:border-color .2s ease;
+    transition:box-shadow .2s ease, transform .2s ease, border-color .2s ease;
   }
   .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
@@ -231,12 +243,12 @@
   .btn:hover{border-color:#b8b8bf;background:#f5f5f7;box-shadow:none;transform:none;}
   .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600;}
   .btn-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
-  .btn-danger{background:#fff;border-color:var(--border-strong);color:var(--danger);}
-  .btn-danger:hover{background:var(--danger-light);border-color:var(--danger);}
-  /* Share is just another secondary action now — plain bordered pill, not a distinct
-     color family. Monochrome palette reserves color for the single primary action. */
-  .btn-share{background:#fff;border-color:#d9d9de;color:#1d1d1f;font-weight:500;}
-  .btn-share:hover{border-color:#b8b8bf;background:#f5f5f7;}
+  .btn-danger{background:var(--danger);border-color:var(--danger);color:#fff;}
+  /* Deliberately a different color family from primary/danger — meant to stand out at a
+     glance as "the one you tap to hand the day's plan to someone else", the way a share
+     icon usually reads as its own distinct action rather than a normal form button. */
+  .btn-share{background:#1a7a42;border-color:#1a7a42;color:#fff;font-weight:600;}
+  .btn-share:hover{background:#156334;border-color:#156334;}
   .btn-ghost{background:transparent;border-color:transparent;}
   .btn-ghost:hover{background:#f5f5f7;box-shadow:none;border-color:transparent;transform:none;}
   .btn-sm{padding:6px 13px;font-size:12.5px;}
@@ -264,13 +276,13 @@
   .search-input{width:100%;}
   .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
   @media (max-width:720px){ .home-grid{grid-template-columns:1fr;} }
-  .currency-row{display:flex;align-items:flex-end;justify-content:center;gap:12px;}
-  .currency-field{flex:0 1 160px;min-width:0;}
+  .currency-row{display:flex;align-items:flex-end;gap:12px;}
+  .currency-field{flex:1;min-width:0;}
   .currency-field input{width:100%;border-radius:999px;font-weight:700;}
   .currency-swap{
     margin-bottom:9px;width:30px;height:30px;border-radius:50%;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;
-    background:var(--primary);
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));
   }
   @media (max-width:480px){ .currency-row{flex-wrap:wrap;} .currency-swap{display:none;} }
   .countdown-num{
@@ -279,9 +291,9 @@
   }
   .countdown-sub{color:var(--text-muted);font-size:13.5px;margin-top:4px;}
   .overview-chip{
-    display:inline-flex;align-items:center;gap:4px;background:var(--bg-soft);color:var(--text);
+    display:inline-flex;align-items:center;gap:4px;background:var(--primary-light);color:var(--primary-dark);
     padding:4px 11px;border-radius:999px;font-size:12.5px;font-weight:600;margin:2px 4px 2px 0;
-    border:1px solid var(--border);
+    border:1px solid rgba(79,91,213,0.12);
   }
   .overview-stats{display:flex;gap:26px;margin-top:14px;}
   .stat-num{font-family:var(--font-serif);font-size:24px;font-weight:600;}
@@ -293,7 +305,7 @@
   .budget-target{font-size:12.5px;color:var(--text-muted);}
   .budget-track{background:var(--bg-soft);border-radius:999px;height:8px;margin-top:10px;overflow:hidden;}
   .budget-fill{height:100%;border-radius:999px;background:var(--primary);transition:width .3s ease;}
-  .budget-fill.over{background:var(--danger);}
+  .budget-fill.over{background:linear-gradient(90deg,var(--warning),var(--danger));}
   .flight-row{
     display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border);
     cursor:pointer;
@@ -302,25 +314,25 @@
   .flight-row:hover .flight-name{text-decoration:underline;}
   .flight-icon{
     font-size:14px;display:flex;align-items:center;justify-content:center;
-    width:30px;height:30px;border-radius:50%;flex-shrink:0;color:var(--text);
-    background:var(--bg-soft);
+    width:30px;height:30px;border-radius:50%;flex-shrink:0;color:#fff;
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));
   }
   .flight-name{font-weight:600;font-size:13.5px;}
   .flight-meta{font-size:12px;color:var(--text-muted);margin-top:1px;}
-  .flight-icon.icon-alert{background:var(--bg-soft);color:var(--text);}
-  .booking-windows-card{border-left:1px solid var(--border);margin-bottom:16px;}
+  .flight-icon.icon-alert{background:var(--warning-light);color:var(--warning);}
+  .booking-windows-card{border-left:4px solid var(--warning);margin-bottom:16px;}
   .expenses-total{font-family:var(--font-serif);font-size:28px;font-weight:600;margin-top:8px;}
   /* FINANCE DASHBOARD */
-  /* Plain number hero, no gradient — a single bold figure carries the weight instead of a
-     colorful banner. Still varies between the subtly dark hero tile and a flat neutral
-     treatment for "settled", but always flat, never a gradient fill. */
+  /* Hero-style gradient treatment — same visual weight as the redesign concept's
+     balance-hero card, color cycling by what the number actually means (green-leaning for
+     "owed to you", warm for "you owe", neutral dark for settled). */
   .balance-banner{
-    font-size:28px;font-weight:700;padding:28px 18px 20px;border-radius:var(--radius-sm);text-align:center;
-    color:#fff;background:var(--primary);
+    font-size:17px;font-weight:800;padding:22px 18px;border-radius:var(--radius);text-align:center;
+    color:#fff;box-shadow:0 14px 30px -14px rgba(20,23,31,0.35);
   }
-  .balance-banner.owed{background:var(--primary);}
-  .balance-banner.owes{background:var(--primary);}
-  .balance-banner.settled{background:var(--text-muted);}
+  .balance-banner.owed{background:linear-gradient(135deg,var(--success),var(--accent) 140%);}
+  .balance-banner.owes{background:linear-gradient(135deg,var(--warning),var(--danger) 140%);}
+  .balance-banner.settled{background:linear-gradient(135deg,#6b7181,#3a3f4d 140%);}
   .fin-table{width:100%;border-collapse:collapse;font-size:13.5px;}
   .fin-table th{
     text-align:left;padding:10px 14px;background:var(--bg-soft);color:var(--text-muted);
@@ -363,7 +375,7 @@
   /* CHIP SELECTOR — a row of pill buttons standing in for a <select>, backed by a hidden
      input holding the actual value (see selectChip() / syncChipActive()). Used for Type,
      Status and Booked By on the Add/Edit Activity form. */
-  .chip-select{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;}
+  .chip-select{display:flex;flex-wrap:wrap;gap:8px;}
   .chip-opt{
     padding:9px 16px;border-radius:999px;font-size:12.5px;font-weight:500;
     background:#fff;border:1px solid #d9d9de;color:var(--text-muted);cursor:pointer;
@@ -379,26 +391,34 @@
   .chip-input-row{display:flex;gap:8px;}
   .chip-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
   .chip{
-    display:inline-flex;align-items:center;gap:6px;background:var(--bg-soft);color:var(--text);
+    display:inline-flex;align-items:center;gap:6px;background:var(--primary-light);color:var(--primary-dark);
     padding:5px 6px 5px 12px;border-radius:999px;font-size:12.5px;font-weight:600;
   }
-  .chip button{background:none;border:none;color:var(--text);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px;border-radius:50%;}
-  .chip button:hover{background:var(--border);}
+  .chip button{background:none;border:none;color:var(--primary-dark);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px;border-radius:50%;}
+  .chip button:hover{background:rgba(79,91,213,0.15);}
 
-  /* TRIPS PAGE — flat white "cover" card with a hairline border, dark near-black near-top
-     accent tile replaced by a plain monochrome header strip. No gradients, no photo-less
-     color cycling — every trip card reads the same, information carries the distinction. */
+  /* TRIPS PAGE — a photo-less "cover" card: a gradient band standing in for a hero photo,
+     cycling through a few preset combinations so a multi-trip grid doesn't look monotone.
+     Text sits on a dark scrim (::after) over the gradient for contrast, same trick the
+     redesign concept uses for its trip cover cards. */
   .trip-card{
-    cursor:pointer;position:relative;overflow:hidden;
-    min-height:140px;display:flex;flex-direction:column;justify-content:space-between;
-    color:var(--text);transition:border-color .2s ease, transform .2s ease;
-    background:#fff;border:1px solid var(--border);padding:20px;
+    cursor:pointer;position:relative;overflow:hidden;isolation:isolate;
+    min-height:176px;display:flex;flex-direction:column;justify-content:flex-end;
+    color:#fff;transition:box-shadow .2s ease, transform .2s ease;
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));
   }
-  .trip-card:hover{border-color:var(--border-strong);transform:translateY(-2px);}
-  .trip-card h3{font-family:var(--font-serif);font-size:18px;font-weight:700;margin-bottom:4px;margin-top:4px;color:var(--text);}
-  .trip-dates{font-size:12.5px;color:var(--text-muted);margin-bottom:8px;}
-  .trip-card .overview-chip{background:var(--bg-soft);color:var(--text);border-color:var(--border);}
-  .trip-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);}
+  .trip-card::after{
+    content:'';position:absolute;inset:0;z-index:-1;
+    background:linear-gradient(0deg,rgba(14,17,25,0.65),rgba(14,17,25,0) 65%);
+  }
+  .trip-card:nth-child(4n+2){background:linear-gradient(180deg,#2f3542,#1d212b);}
+  .trip-card:nth-child(4n+3){background:linear-gradient(180deg,var(--accent),#00806f);}
+  .trip-card:nth-child(4n+4){background:linear-gradient(180deg,var(--text-muted),#3a3f4d);}
+  .trip-card:hover{box-shadow:0 20px 40px -14px rgba(20,23,31,0.45);transform:translateY(-3px);}
+  .trip-card h3{font-family:var(--font-serif);font-size:18px;font-weight:700;margin-bottom:4px;margin-top:4px;color:#fff;}
+  .trip-dates{font-size:12.5px;color:rgba(255,255,255,0.85);margin-bottom:8px;}
+  .trip-card .overview-chip{background:rgba(255,255,255,0.22);color:#fff;border-color:rgba(255,255,255,0.3);}
+  .trip-card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.25);font-size:12px;color:rgba(255,255,255,0.85);}
 
   /* TRIP DETAIL */
   .trip-detail-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:26px 0 18px;flex-wrap:wrap;}
@@ -407,15 +427,15 @@
   /* A single grouped toolbar strip rather than loose pills scattered on the page background —
      everything inside reads as one control bar instead of competing separately for attention. */
   .filter-bar{
-    display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;justify-content:center;
-    background:#fff;border:1px solid var(--border);border-radius:16px;padding:8px;
+    display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center;
+    background:#fff;border:1px solid #ececef;border-radius:16px;padding:8px;
   }
   .day-btn{
     border:1px solid #d9d9de;background:#fff;border-radius:999px;padding:7px 15px;
     font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text-muted);white-space:nowrap;
     transition:all .15s ease;
   }
-  .day-btn:hover{border-color:var(--text-muted);color:var(--text);}
+  .day-btn:hover{border-color:var(--primary);color:var(--primary-dark);}
   .day-btn.active{background:var(--text);border-color:var(--text);color:#fff;}
   .filter-select{
     width:auto;padding:7px 12px;font-size:12.5px;font-weight:500;border-radius:999px;
@@ -448,36 +468,39 @@
   }
   .day-title-input::placeholder{color:var(--text-muted);font-weight:500;font-family:var(--font-sans);font-size:13.5px;}
 
-  /* ITEM / ITINERARY ROW — flattened to the Apple-concept's hairline-divided list row:
-     no card background, no shadow, no border-radius, no gradient badge. A thin bottom
-     border separates consecutive rows instead. */
+  /* ITEM / ITINERARY CARD */
   .item-card{
-    display:flex;align-items:center;gap:14px;padding:13px 2px;position:relative;margin-bottom:0;
-    background:transparent;border:none;border-bottom:1px solid var(--border);border-radius:0;
-    transition:opacity .15s ease, background .15s ease;
+    display:flex;align-items:center;gap:14px;padding:14px 16px;position:relative;margin-bottom:10px;
+    transition:opacity .15s ease, box-shadow .2s ease, border-color .2s ease, transform .15s ease;
     z-index:0;cursor:pointer;
   }
-  .item-card:hover{background:var(--bg-soft);}
+  .item-card:hover{box-shadow:var(--shadow-hover);transform:translateY(-1px);}
   .item-card:has(.popover){z-index:5;}
   .item-card.dragging{opacity:.4;}
-  .item-card.drag-over{background:var(--bg-soft);border-bottom-color:var(--text);}
-  .drag-group .item-card:last-child{border-bottom:none;}
+  .item-card.drag-over{box-shadow:var(--shadow-hover);border-color:var(--primary);}
   .drag-handle{
     cursor:grab;color:var(--border-strong);font-size:15px;flex-shrink:0;letter-spacing:-1px;
     user-select:none;line-height:1;padding:4px 0;
   }
   .drag-handle:active{cursor:grabbing;}
   .item-type-badge{
-    width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    font-size:14px;flex-shrink:0;position:relative;z-index:1;
-    background:var(--bg-soft);color:var(--text);box-shadow:none;
+    width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:16px;flex-shrink:0;position:relative;z-index:1;
+    background:linear-gradient(180deg,var(--primary),var(--primary-dark));
+    box-shadow:0 6px 14px -4px rgba(79,91,213,0.45);
+    /* Emoji glyphs render in their own color regardless of CSS color, so the gradient node
+       only shows through for the few icons that are plain text (rare — TYPE_ICONS are all
+       emoji) — filter:brightness/contrast isn't needed here, this is just the node's frame. */
   }
-  /* TIMELINE — a thin rail no longer runs behind the stack of rows; a plain hairline
-     list doesn't need the decorative connector, the distance row (below) already reads
-     as a connection between two rows. Kept as a no-op selector so any residual markup
-     referencing .drag-group isn't affected structurally. */
+  /* TIMELINE — a connecting rail runs down through each day's stack of activity "nodes"
+     (the round type-badge icons), with the distance/walking-time chip hanging on it between
+     consecutive location cards. Purely decorative (positioned behind the cards via z-index),
+     so it never affects drag-and-drop, click targets, or any of the data rendered inside. */
   .drag-group{position:relative;}
-  .drag-group::before{ content:none; }
+  .drag-group::before{
+    content:'';position:absolute;top:19px;bottom:19px;left:63px;width:3px;border-radius:3px;
+    background:linear-gradient(var(--primary),var(--accent));opacity:0.35;z-index:0;
+  }
   .item-main{flex:1;min-width:0;}
   .item-name{font-weight:600;font-size:14.5px;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .item-meta{font-size:12px;color:var(--text-muted);display:flex;gap:9px;flex-wrap:wrap;align-items:center;}
@@ -485,15 +508,15 @@
     font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;white-space:nowrap;
     text-transform:uppercase;letter-spacing:.03em;
   }
-  .status-Booked{background:var(--text);color:#fff;}
-  .status-ToBook{background:var(--bg-soft);color:var(--text);}
+  .status-Booked{background:var(--success-light);color:var(--success);}
+  .status-ToBook{background:var(--warning-light);color:var(--warning);}
   .status-Nil{background:var(--bg-soft);color:var(--text-muted);}
   .item-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
-  .item-cover-img{width:44px;height:44px;object-fit:cover;border-radius:50%;flex-shrink:0;border:1px solid var(--border);display:block;}
+  .item-cover-img{width:88px;height:88px;object-fit:cover;border-radius:12px;flex-shrink:0;border:1px solid var(--border);display:block;}
   .item-cover-wrap{position:relative;flex-shrink:0;cursor:pointer;}
   .item-cover-fallback{
-    width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    font-size:16px;color:var(--text);background:var(--bg-soft);box-shadow:none;cursor:default;
+    width:88px;height:88px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+    font-size:28px;color:#fff;box-shadow:0 8px 18px -8px rgba(20,23,31,0.4);cursor:default;
   }
   .item-cover-count{
     position:absolute;bottom:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;
@@ -519,12 +542,12 @@
   .detail-meta-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text-muted);}
   .detail-meta-row>span{display:inline-flex;align-items:center;gap:4px;}
   .detail-type-pill{background:var(--bg-soft);padding:3px 11px;border-radius:999px;font-weight:600;}
-  .detail-links-row{display:flex;flex-wrap:wrap;justify-content:center;gap:20px;margin-bottom:14px;}
+  .detail-links-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
   .detail-notes{font-size:13.5px;line-height:1.65;color:var(--text);margin-bottom:16px;overflow-wrap:anywhere;background:var(--bg-soft);border-radius:var(--radius-sm);padding:12px 14px;}
   .detail-files{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;}
-  .open-now-badge{padding:2px 10px;border-radius:999px;font-weight:600;background:var(--bg-soft);color:var(--text);}
-  .open-now-badge.open{background:var(--bg-soft);color:var(--text);}
-  .open-now-badge.closed{background:var(--bg-soft);color:var(--text-muted);}
+  .open-now-badge{padding:2px 10px;border-radius:999px;font-weight:600;}
+  .open-now-badge.open{background:rgba(52,199,89,0.15);color:#1f8b3d;}
+  .open-now-badge.closed{background:rgba(255,59,48,0.15);color:#c0392b;}
   @media (max-width:480px){
     .detail-gallery-img{max-height:280px;}
     .lightbox-nav{width:32px;height:32px;font-size:18px;}
@@ -646,11 +669,11 @@
   .link-line a{color:var(--primary);text-decoration:none;font-weight:600;}
   .link-line a:hover{text-decoration:underline;}
   .nav-btn{
-    display:inline-flex;align-items:center;gap:4px;background:none;color:var(--accent);
-    padding:4px 2px;border-radius:0;font-size:12.5px;font-weight:500;text-decoration:none;
-    border:none;transition:opacity .15s ease;
+    display:inline-flex;align-items:center;gap:4px;background:var(--primary-light);color:var(--primary-dark);
+    padding:4px 12px;border-radius:999px;font-size:11.5px;font-weight:700;text-decoration:none;
+    border:1px solid rgba(79,91,213,0.15);transition:all .15s ease;
   }
-  .nav-btn:hover{opacity:.7;}
+  .nav-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 3px 8px rgba(79,91,213,0.3);}
   /* A long unbroken URL in notes has no whitespace to wrap at, so without this it overflows
      its own box and visually bleeds over the card's cover image sitting next to it (worst on
      narrow/mobile widths where there's little room to begin with). */
@@ -732,30 +755,6 @@
   .color-grid-row{display:flex;}
   .color-cell{width:20px;height:16px;border:none;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.08);flex:1;}
   .color-cell.active{box-shadow:inset 0 0 0 2px var(--text);position:relative;z-index:1;}
-
-  /* PLAIN HAIRLINE LIST — the Apple-concept's core structural replacement for "cards
-     everywhere". Used by the Home "Manage" quick-links section and available for any
-     future plain-row content; icon is a small flat monochrome circle, not a gradient
-     badge, and rows are separated by a 1px hairline rather than individual card shells. */
-  .list{}
-  .row{display:flex;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s ease;}
-  .row:hover{background:var(--bg-soft);}
-  .row:last-child{border-bottom:none;}
-  .row-icon{width:30px;height:30px;border-radius:50%;background:var(--bg-soft);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;color:var(--text);}
-  .row-body{flex:1;min-width:0;}
-  .row-title{font-size:14px;font-weight:600;color:var(--text);}
-  .row-sub{font-size:12px;color:var(--text-muted);margin-top:1px;}
-  .row-value{font-size:14px;font-weight:600;color:var(--text);flex-shrink:0;}
-  .row-chevron{color:var(--border-strong);font-size:16px;flex-shrink:0;}
-  .section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin:20px 0 6px;}
-  .section-label:first-child{margin-top:0;}
-
-  /* Solid dark hero tile — used sparingly (one per screen) in place of a gradient banner,
-     e.g. a countdown or "happening now" highlight. */
-  .hero-dark{background:var(--text);border-radius:var(--radius-sm);padding:16px 18px;color:#fff;margin-bottom:12px;}
-  .hero-dark .hd-label{font-size:10px;color:rgba(255,255,255,0.55);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px;}
-  .hero-dark .hd-title{font-size:18px;font-weight:700;margin-bottom:3px;}
-  .hero-dark .hd-sub{font-size:12.5px;color:rgba(255,255,255,0.7);}
 
   .hidden{display:none !important;}
   .loading-note{text-align:center;padding:80px 20px;color:var(--text-muted);font-size:14px;}
@@ -2360,24 +2359,6 @@ function renderHome(){
       ${renderExpensesCard(trip)}
       ${renderTasksCard(trip)}
     </div>
-    <div class="section-label">Manage</div>
-    <div class="list">
-      <div class="row" onclick="openTripExpenses('${trip.id}')">
-        <div class="row-icon">🧾</div>
-        <div class="row-body">
-          <div class="row-title">Trip Expenses</div>
-          <div class="row-sub">${fmtCost((trip.expenses||[]).reduce((s,e)=>s+Number(e.amount||0),0))} logged</div>
-        </div>
-        <div class="row-chevron">&rsaquo;</div>
-      </div>
-      <div class="row" onclick="openShoppingList('${trip.id}')">
-        <div class="row-icon">🛍️</div>
-        <div class="row-body">
-          <div class="row-title">Shopping List</div>
-        </div>
-        <div class="row-chevron">&rsaquo;</div>
-      </div>
-    </div>
   `;
 }
 
@@ -3075,15 +3056,16 @@ async function loadDistanceBadges(trip, items){
 function renderItemCard(item, trip){
   const accent = item.cardColor ? `border-left:5px solid ${item.cardColor};` : '';
   const badgeStyle = item.cardColor ? `background:${hexToRgba(item.cardColor,0.18)};border-color:${hexToRgba(item.cardColor,0.4)};` : '';
-  // Every row gets a small flat icon circle, not just the ones with an uploaded photo —
-  // a real photo always wins, but a row with none still gets its type glyph in a plain
-  // monochrome circle instead of just leaving that space blank.
+  // Every card gets a colorful square thumbnail, not just the ones with an uploaded photo —
+  // a real photo always wins, but a card with none still gets a gradient tile (tinted by its
+  // activity type) instead of just leaving that space blank, so the list reads as a visual
+  // timeline rather than a plain text list.
   const coverHtml = (item.imagePaths&&item.imagePaths.length)
     ? `<div class="item-cover-wrap" onclick="event.stopPropagation();openItemImages('${trip.id}','${item.id}')">
         <img class="item-cover-img" src="${coverPublicUrl(item.imagePaths[0])}" alt="" loading="lazy">
         ${item.imagePaths.length>1? `<span class="item-cover-count">+${item.imagePaths.length-1}</span>` : ''}
       </div>`
-    : `<div class="item-cover-wrap item-cover-fallback" style="${item.cardColor?`background:${hexToRgba(item.cardColor,0.14)};`:''}">${iconGlyphHtml(item, 18)}</div>`;
+    : `<div class="item-cover-wrap item-cover-fallback" style="background:linear-gradient(160deg,rgba(255,255,255,0.22),rgba(0,0,0,0.18)),${item.cardColor||TYPE_COLORS[item.type]||'#948d7c'};">${iconGlyphHtml(item, 24)}</div>`;
   const notesLong = item.notes && item.notes.replace(/<[^>]+>/g,'').length > 140;
   const linkedNotes = linkifyNotes(item.notes);
   const notesHtml = item.notes ? (
