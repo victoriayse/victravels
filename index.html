@@ -4203,36 +4203,58 @@ function parseReceiptResponse(text, categories){
   const catRaw = typeof o.category === 'string' ? o.category.trim().toLowerCase() : '';
   const category = cats.find(c=>c.toLowerCase() === catRaw) || (cats.includes('Other') ? 'Other' : null);
   const str = v => (typeof v === 'string' && v.trim()) ? v.trim().slice(0,200) : null;
+  const items = [];
+  if(Array.isArray(o.items)){
+    o.items.slice(0,40).forEach(it=>{
+      if(!it || typeof it !== 'object') return;
+      const nm = str(it.name), am = parseAmountLoose(it.amount);
+      if(nm && am != null) items.push({ name: nm.slice(0,60).toUpperCase(), amount: am });
+    });
+  }
   return { amount, currency: normalizeCurrencyCode(o.currency), category,
-    merchant: str(o.merchant), date: validDateStr(o.date), notes: str(o.notes) };
+    merchant: str(o.merchant), date: validDateStr(o.date), notes: str(o.notes), items };
 }
 function buildReceiptPrompt(categories, opts){
   opts = opts || {};
-  const schema = '{"total":number,"currency":"ISO 4217 code","category":"one of: '+categories.join(', ')+'","merchant":string,"date":"YYYY-MM-DD or null","notes":string}';
+  const schema = '{"total":number,"currency":"ISO 4217 code","category":"one of: '+categories.join(', ')+'","merchant":string,"date":"YYYY-MM-DD or null","notes":string,"items":[{"name":string,"amount":number}]}';
   if(opts.userText){
     return 'Extract one expense from the user\'s message below. Reply with a single JSON object and nothing else, in exactly this shape: '+schema+'.\n'
       +'Today is '+opts.today+'. If no currency is stated, use '+opts.defaultCurrency+'. Resolve relative dates like "yesterday" to YYYY-MM-DD; use null if no date is given.\n'
       +'Message: '+opts.userText;
   }
   return 'Read this receipt photo. Reply with a single JSON object and nothing else (no markdown, no commentary), in exactly this shape: '+schema+'. '
-    +'"total" is the final amount paid as a plain number. "date" is the receipt date or null if not visible. "notes" is a short description of what was bought.';
+    +'"total" is the final amount paid as a plain number. "date" is the receipt date or null if not visible. "notes" is a short description of what was bought. "items" lists EVERY line on the receipt in order, each with its printed name (uppercase) and amount as a plain number: food/drink items, and also charges such as cover charge, GST/tax, service charge, and discounts as separate lines (omit the grand total from items).';
 }
 // Fold a validated extraction into the form-draft shape. The app stores every expense in SGD,
 // so EUR is converted with the live rate when available; other currencies are kept as-is and
 // flagged in the note so the user can fix the amount.
+function receiptCurrencySymbol(c){
+  const m = { SGD:'$', USD:'$', AUD:'$', CAD:'$', NZD:'$', HKD:'$', EUR:'€', GBP:'£', JPY:'¥', CNY:'¥', KRW:'₩', THB:'฿', CHF:'CHF ' };
+  return c ? (m[c] || (c + ' ')) : '$';
+}
+function fmtReceiptAmt(n){ return Number.isInteger(n) ? String(n) : n.toFixed(2); }
+// Itemised note exactly as printed on the receipt, e.g.
+//   CARBONARA $10 / PASTA $10 / COVER CHARGE $2 / GST $1 / (blank) / TOTAL: $39
 function receiptToDraft(r, rate){
   let amount = r.amount, hint = 'Read by AI — please check everything, then save.';
-  const parts = [];
-  if(r.merchant) parts.push(r.merchant);
-  if(r.notes) parts.push(r.notes);
+  const sym = receiptCurrencySymbol(r.currency);
+  const lines = [];
+  if(r.merchant) lines.push(r.merchant);
+  if(r.items && r.items.length){
+    r.items.forEach(it=>lines.push(it.name + ' ' + sym + fmtReceiptAmt(it.amount)));
+    lines.push('');
+    lines.push('TOTAL: ' + sym + fmtReceiptAmt(r.amount));
+  } else if(r.notes){
+    lines.push(r.notes);
+  }
   if(r.currency === 'EUR' && rate){
     amount = Math.round(r.amount*rate*100)/100;
-    parts.push('€'+r.amount.toFixed(2)+' on receipt');
+    lines.push('(Receipt in EUR; logged in SGD at the live rate)');
   } else if(r.currency && r.currency !== 'SGD'){
-    parts.push('['+r.currency+' '+r.amount.toFixed(2)+' on receipt — amount may need converting]');
+    lines.push('['+r.currency+' '+r.amount.toFixed(2)+' on receipt — amount may need converting]');
     hint = 'The receipt is in '+r.currency+' but expenses are logged in SGD — please convert the amount, then save.';
   }
-  return { amount, category: r.category, date: r.date, note: parts.join(' — ') || null, hint };
+  return { amount, category: r.category, date: r.date, note: lines.join('\n').trim() || null, hint };
 }
 function receiptErrorMessage(status){
   if(status === 401 || status === 403) return 'The AI service rejected the request (passcode or key problem on the server).';
@@ -4280,7 +4302,7 @@ async function callOpenRouter(content){
       const res = await fetch(aiProxyUrl(), {
         method:'POST',
         headers:{ 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY, 'Content-Type':'application/json', 'x-vt-pass': PASS_HASH },
-        body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:800 }),
+        body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:1400 }),
         signal: ctrl.signal
       });
       lastStatus = res.status; lastNetwork = false; lastTimeout = false;
@@ -4453,7 +4475,7 @@ function renderTripExpensesModal(tripId){
       </div>
       <div class="field">
         <label class="field-label">Note <span style="font-weight:400;">(optional)</span></label>
-        <input type="text" id="expense-note-input" placeholder="e.g. Lunch at the night market" value="${editing?escapeHtml(editing.note):(draft&&draft.note?escapeHtml(draft.note):'')}">
+        <textarea id="expense-note-input" rows="${(editing&&editing.note&&editing.note.includes('\n'))||(draft&&draft.note&&draft.note.includes('\n'))?9:2}" placeholder="e.g. Lunch at the night market" style="width:100%;box-sizing:border-box;font-family:inherit;resize:vertical;">${editing?escapeHtml(editing.note):(draft&&draft.note?escapeHtml(draft.note):'')}</textarea>
       </div>
       <div class="field">
         <label class="field-label">Receipt <span style="font-weight:400;">(optional)</span></label>
@@ -4527,7 +4549,7 @@ function renderExpenseRow(e, trip){
       : `<div style="font-size:20px;flex-shrink:0;">${EXPENSE_CATEGORY_ICONS[e.category]||'💸'}</div>`}
     <div style="flex:1;min-width:0;">
       <div style="font-weight:600;">${fmtCost(e.amount)} <span style="font-weight:400;color:var(--text-muted);">· ${escapeHtml(e.category)}${perPax}</span></div>
-      ${metaBits? `<div class="countdown-sub">${metaBits}</div>`:''}
+      ${metaBits? `<div class="countdown-sub" style="white-space:pre-line;">${metaBits}</div>`:''}
     </div>
     <button class="btn btn-sm" onclick="event.stopPropagation();startEditExpense('${e.tripId}','${e.id}')" title="Edit">✏️</button>
     <button class="btn btn-sm" onclick="showDeleteExpenseConfirm(event,'${e.tripId}','${e.id}')" title="Delete">✕</button>
