@@ -4263,26 +4263,43 @@ function downscaleImageToDataUrl(file, maxSide, quality){
     img.src = url;
   });
 }
+// Free models are often busy or rate-limited, so try several in turn until one answers.
+const AI_MODEL_CHAIN = [
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
+  'dots-studio/dots-3-note-preview:free'
+];
 async function callOpenRouter(content){
-  const model = OPENROUTER_DEFAULT_MODEL;
-  const ctrl = new AbortController();
-  const timer = setTimeout(()=>ctrl.abort(), 45000);
-  try{
-    const res = await fetch(aiProxyUrl(), {
-      method:'POST',
-      headers:{ 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY, 'Content-Type':'application/json', 'x-vt-pass': PASS_HASH },
-      body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:400 }),
-      signal: ctrl.signal
-    });
-    if(!res.ok) return { error: receiptErrorMessage(res.status) };
-    const data = await res.json();
-    const msg = data && data.choices && data.choices[0] && data.choices[0].message;
-    let text = msg && msg.content;
-    if(Array.isArray(text)) text = text.map(p=>p && p.text || '').join('');
-    return { text: typeof text === 'string' ? text : '' };
-  }catch(e){
-    return { error: e && e.name === 'AbortError' ? 'The AI took too long (45s). Try again, or enter it manually.' : 'Network problem reaching the AI service. Check your connection.' };
-  }finally{ clearTimeout(timer); }
+  let lastStatus = 0, lastNetwork = false, lastTimeout = false;
+  for(const model of AI_MODEL_CHAIN){
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 40000);
+    try{
+      const res = await fetch(aiProxyUrl(), {
+        method:'POST',
+        headers:{ 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY, 'Content-Type':'application/json', 'x-vt-pass': PASS_HASH },
+        body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:400 }),
+        signal: ctrl.signal
+      });
+      lastStatus = res.status; lastNetwork = false; lastTimeout = false;
+      if(res.status === 401) return { error: receiptErrorMessage(401) };   // passcode/server problem: other models won't help
+      if(res.status === 404) return { error: receiptErrorMessage(404) };
+      if(!res.ok) continue;                                                // busy / gated model: try the next one
+      let data = null;
+      try{ data = JSON.parse((await res.text()).trim()); }catch(e){ continue; }
+      if(!data || data.error) { lastStatus = (data && data.error && data.error.code) || 502; continue; }
+      const msg = data.choices && data.choices[0] && data.choices[0].message;
+      let text = msg && msg.content;
+      if(Array.isArray(text)) text = text.map(p=>p && p.text || '').join('');
+      if(typeof text === 'string' && text.trim()) return { text };
+    }catch(e){
+      if(e && e.name === 'AbortError') lastTimeout = true; else lastNetwork = true;
+    }finally{ clearTimeout(timer); }
+  }
+  if(lastNetwork) return { error: 'Network problem reaching the AI service. Check your connection.' };
+  if(lastTimeout) return { error: 'The free AI models are slow right now. Try again in a minute, or enter it manually.' };
+  return { error: 'The free AI models are busy right now' + (lastStatus ? ' (HTTP '+lastStatus+')' : '') + '. Try again in a minute.' };
 }
 function scanStatus(msg, isError){
   const el = document.getElementById('scan-status');
