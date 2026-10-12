@@ -6920,7 +6920,51 @@ function jlResultHtml(){
 }
 
 /* ============ INIT ============ */
-loadAllData().then(()=>{ render(); try{ flResumeAlerts(); }catch(e){} });
+/* ============ PASSCODE GATE ============
+   Keeps casual visitors out. Only a salted SHA-256 of the passcode is stored here (never the
+   passcode itself). A correct entry is remembered on this device (localStorage), so it is only
+   asked once per device/browser. This is a convenience lock, not server-side security. */
+const PASS_HASH = '6f58cef01402776f5d6aff54f8c1592168b1d2e6e4852119161eb46a56496575';
+const PASS_KEY = 'victravels_unlocked';
+async function passHash(code){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('victravels:' + code));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function startApp(){ loadAllData().then(()=>{ render(); try{ flResumeAlerts(); }catch(e){} }); }
+function isUnlocked(){ try{ return localStorage.getItem(PASS_KEY) === PASS_HASH; }catch(e){ return false; } }
+function showPassGate(){
+  const el = document.createElement('div');
+  el.id = 'pass-gate';
+  el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:var(--bg,#f5f3ed);display:flex;align-items:center;justify-content:center;padding:24px;';
+  el.innerHTML = `<form id="pass-form" autocomplete="off" style="width:100%;max-width:340px;background:#fff;border:1px solid var(--border,#e4e1d8);border-radius:22px;padding:28px 24px;text-align:center;">
+    <div style="font-size:34px;margin-bottom:6px;">✈️</div>
+    <h2 style="margin:0 0 4px;font-size:20px;">VicTravels</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--text-muted,#777);">Enter the passcode to continue</p>
+    <input id="pass-input" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Passcode" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1px solid var(--border-strong,#d8d4c8);border-radius:14px;font-size:16px;text-align:center;">
+    <div id="pass-err" style="min-height:18px;margin:8px 0 4px;font-size:12.5px;color:#c0392b;"></div>
+    <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Unlock</button>
+    <p style="margin:12px 0 0;font-size:11.5px;color:var(--text-muted,#777);">This device will be remembered.</p>
+  </form>`;
+  document.body.appendChild(el);
+  const input = el.querySelector('#pass-input'), err = el.querySelector('#pass-err');
+  setTimeout(()=>input.focus(), 50);
+  el.querySelector('#pass-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    err.textContent = '';
+    try{
+      const h = await passHash(input.value.trim());
+      if(h === PASS_HASH){
+        try{ localStorage.setItem(PASS_KEY, PASS_HASH); }catch(_){}
+        el.remove();
+        startApp();
+      } else {
+        err.textContent = 'Incorrect passcode';
+        input.value = ''; input.focus();
+      }
+    }catch(_){ err.textContent = 'Could not check the passcode in this browser.'; }
+  });
+}
+if(isUnlocked()) startApp(); else showPassGate();
 </script>
 </body>
 </html>
