@@ -4145,7 +4145,8 @@ let tempReceiptPath = null;
 const OPENROUTER_KEY_LS = 'victravels_openrouter_key';
 const OPENROUTER_MODEL_LS = 'victravels_openrouter_model';
 const OPENROUTER_DEFAULT_MODEL = 'thinkingmachines/inkling-small:free';
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// The OpenRouter key lives only on the server (Supabase Edge Function secret) — never in this page.
+function aiProxyUrl(){ return SUPABASE_URL + '/functions/v1/ai-proxy'; }
 
 function parseAmountLoose(v){
   if(typeof v === 'number') return (isFinite(v) && v > 0) ? Math.round(v*100)/100 : null;
@@ -4211,7 +4212,7 @@ function buildReceiptPrompt(categories, opts){
   if(opts.userText){
     return 'Extract one expense from the user\'s message below. Reply with a single JSON object and nothing else, in exactly this shape: '+schema+'.\n'
       +'Today is '+opts.today+'. If no currency is stated, use '+opts.defaultCurrency+'. Resolve relative dates like "yesterday" to YYYY-MM-DD; use null if no date is given.\n'
-      +'Message: +opts.userText+';
+      +'Message: '+opts.userText;
   }
   return 'Read this receipt photo. Reply with a single JSON object and nothing else (no markdown, no commentary), in exactly this shape: '+schema+'. '
     +'"total" is the final amount paid as a plain number. "date" is the receipt date or null if not visible. "notes" is a short description of what was bought.';
@@ -4234,8 +4235,9 @@ function receiptToDraft(r, rate){
   return { amount, category: r.category, date: r.date, note: parts.join(' — ') || null, hint };
 }
 function receiptErrorMessage(status){
-  if(status === 401 || status === 403) return 'OpenRouter rejected the key. Check it in AI settings.';
-  if(status === 402) return 'OpenRouter says the key is out of credit.';
+  if(status === 401 || status === 403) return 'The AI service rejected the request (passcode or key problem on the server).';
+  if(status === 404) return 'The AI service is not set up yet on the server.';
+  if(status === 402) return 'The AI service is out of credit.';
   if(status === 429) return 'Rate limit reached (free models have daily limits). Try again later.';
   if(status >= 500) return 'The AI service is having trouble right now.';
   return 'The AI request failed (HTTP '+status+').';
@@ -4262,14 +4264,13 @@ function downscaleImageToDataUrl(file, maxSide, quality){
   });
 }
 async function callOpenRouter(content){
-  const key = (localStorage.getItem(OPENROUTER_KEY_LS)||'').trim();
-  const model = (localStorage.getItem(OPENROUTER_MODEL_LS)||'').trim() || OPENROUTER_DEFAULT_MODEL;
+  const model = OPENROUTER_DEFAULT_MODEL;
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), 45000);
   try{
-    const res = await fetch(OPENROUTER_URL, {
+    const res = await fetch(aiProxyUrl(), {
       method:'POST',
-      headers:{ 'Authorization':'Bearer '+key, 'Content-Type':'application/json', 'X-Title':'VicTravels', 'HTTP-Referer': location.origin },
+      headers:{ 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY, 'Content-Type':'application/json', 'x-vt-pass': PASS_HASH },
       body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:400 }),
       signal: ctrl.signal
     });
@@ -4280,7 +4281,7 @@ async function callOpenRouter(content){
     if(Array.isArray(text)) text = text.map(p=>p && p.text || '').join('');
     return { text: typeof text === 'string' ? text : '' };
   }catch(e){
-    return { error: e && e.name === 'AbortError' ? 'The AI took too long (45s). Try again, or enter it manually.' : 'Network problem reaching OpenRouter. Check your connection.' };
+    return { error: e && e.name === 'AbortError' ? 'The AI took too long (45s). Try again, or enter it manually.' : 'Network problem reaching the AI service. Check your connection.' };
   }finally{ clearTimeout(timer); }
 }
 function scanStatus(msg, isError){
@@ -4314,12 +4315,10 @@ function finishScan(tripId, result){
   if(f && f.scrollIntoView) f.scrollIntoView({ behavior:'smooth', block:'start' });
   showToast('Check these details, then save');
 }
-function hasAiKey(){ return !!(localStorage.getItem(OPENROUTER_KEY_LS)||'').trim(); }
+function hasAiKey(){ return true; }
 async function handleScanFile(e, tripId){
   const file = e.target.files && e.target.files[0]; e.target.value = '';
   if(!file) return;
-  saveAiSettings();
-  if(!hasAiKey()){ scanStatus('Add your OpenRouter key first.', true); revealAiSettings(); return; }
   scanStatus('Reading receipt…');
   try{
     const dataUrl = await downscaleImageToDataUrl(file, 1280, 0.8);
@@ -4331,8 +4330,6 @@ async function handleSmartText(tripId){
   const inp = document.getElementById('smart-text-input');
   const text = inp ? inp.value.trim() : '';
   if(!text){ scanStatus('Type or speak an expense first, e.g. “Spent 20 euros on gelato”.', true); return; }
-  saveAiSettings();
-  if(!hasAiKey()){ scanStatus('Add your OpenRouter key first.', true); revealAiSettings(); return; }
   scanStatus('Working it out…');
   try{
     const prompt = buildReceiptPrompt(EXPENSE_CATEGORIES, { userText:text, today:todayStr(), defaultCurrency:'SGD' });
@@ -4357,8 +4354,6 @@ function startSpeechInput(){
 }
 function renderSmartScanHtml(trip){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const key = localStorage.getItem(OPENROUTER_KEY_LS) || '';
-  const model = localStorage.getItem(OPENROUTER_MODEL_LS) || OPENROUTER_DEFAULT_MODEL;
   return `<div class="card" id="smart-scan-card" style="margin-bottom:22px;padding:18px;">
     <div class="section-title">Smart entry</div>
     <input type="file" accept="image/*" capture="environment" id="scan-file-input" style="display:none;" onchange="handleScanFile(event,'${trip.id}')">
@@ -4372,18 +4367,6 @@ function renderSmartScanHtml(trip){
       </div>
     </div>
     <div id="scan-status" class="muted-note" style="margin-top:8px;min-height:1em;"></div>
-    <details id="ai-settings" style="margin-top:10px;">
-      <summary class="muted-note" style="cursor:pointer;">AI settings</summary>
-      <div class="field" style="margin-top:8px;">
-        <label class="field-label">OpenRouter key</label>
-        <input type="password" id="ai-key-input" autocomplete="off" placeholder="sk-or-..." value="${escapeHtml(key)}" onchange="saveAiSettings()" style="width:100%;box-sizing:border-box;">
-      </div>
-      <div class="field">
-        <label class="field-label">Model</label>
-        <input type="text" id="ai-model-input" value="${escapeHtml(model)}" onchange="saveAiSettings()" style="width:100%;box-sizing:border-box;">
-      </div>
-      <div class="muted-note">Create a key at openrouter.ai/settings/keys; set a low credit limit. Free models have daily request limits and are hosted by third parties, so avoid receipts showing card numbers.</div>
-    </details>
   </div>`;
 }
 
