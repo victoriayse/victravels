@@ -739,6 +739,28 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  .open-now-badge[data-place]{cursor:pointer;}
+  .popover.hours-pop{position:fixed;right:auto;padding:8px 0;min-width:230px;max-width:calc(100vw - 16px);z-index:200;}
+  .hours-row{padding:5px 14px;font-size:12.5px;color:var(--text-muted);white-space:nowrap;}
+  .hours-row.today{color:var(--text);font-weight:700;background:var(--bg-soft);}
+  .item-side:not(:has(.item-bookedby, .item-cost:not(:empty))){display:none;}
+  .overview-stats{flex-wrap:wrap;}
+  @media (max-width:480px){
+    .overview-stats{display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;}
+    .overview-stats .stat-num{font-size:20px;overflow-wrap:anywhere;}
+    .field-row{flex-wrap:wrap;}
+    .field-row .field{min-width:110px;}
+    .field input[type=date]{min-width:0;max-width:100%;width:100%;box-sizing:border-box;}
+    /* Itinerary card: drop the drag handle (no touch drag), tighten gaps, give the text the
+       room, and push the photo to the far right with just enough space for the ⋮ button. */
+    .item-card{gap:10px;padding:12px 8px 12px 12px;}
+    .item-card .drag-handle{display:none;}
+    .item-type-badge{width:32px;height:32px;}
+    .item-cover-img,.item-cover-fallback{width:84px;height:84px;}
+    .item-edit-btn{min-width:30px;margin:-8px -2px -8px -4px;}
+    .drag-group::before{left:28px;}
+    .card-distance-badge{margin-left:12px;flex-wrap:wrap;}
+  }
 
   /* PRESET COLOR PICKER (Card Color field) — a trigger swatch that opens a panel of
      fixed, precomputed swatches (quick colors + a hue/lightness grid), never an open
@@ -1594,7 +1616,7 @@ async function fetchPlaceDetails(placeId){
     const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
       headers: {
         'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
-        'X-Goog-FieldMask': 'currentOpeningHours.openNow,businessStatus,photos',
+        'X-Goog-FieldMask': 'currentOpeningHours.openNow,currentOpeningHours.weekdayDescriptions,businessStatus,photos',
       },
     });
     if(!res.ok){ placeDetailsCache[placeId] = null; return null; }
@@ -1603,6 +1625,8 @@ async function fetchPlaceDetails(placeId){
       openNow: data.currentOpeningHours && typeof data.currentOpeningHours.openNow === 'boolean' ? data.currentOpeningHours.openNow : null,
       businessStatus: data.businessStatus || null,
       photoName: (data.photos && data.photos[0] && data.photos[0].name) || null,
+      hours: (data.currentOpeningHours && data.currentOpeningHours.weekdayDescriptions) || null,
+      placeId: placeId,
     };
     placeDetailsCache[placeId] = result;
     return result;
@@ -1627,13 +1651,13 @@ async function loadDetailPlaceExtras(tripId, item, myToken){
   const badgeEl = document.getElementById('detail-openbadge');
   if(badgeEl){
     if(details.businessStatus === 'CLOSED_PERMANENTLY'){
-      badgeEl.innerHTML = `<span class="open-now-badge closed">Permanently closed</span>`;
+      badgeEl.innerHTML = `<span data-place="${placeId}" class="open-now-badge closed">Permanently closed</span>`;
     } else if(details.businessStatus === 'CLOSED_TEMPORARILY'){
-      badgeEl.innerHTML = `<span class="open-now-badge closed">Temporarily closed</span>`;
+      badgeEl.innerHTML = `<span data-place="${placeId}" class="open-now-badge closed">Temporarily closed</span>`;
     } else if(details.openNow === true){
-      badgeEl.innerHTML = `<span class="open-now-badge open">🟢 Open now</span>`;
+      badgeEl.innerHTML = `<span data-place="${placeId}" class="open-now-badge open">🟢 Open now</span>`;
     } else if(details.openNow === false){
-      badgeEl.innerHTML = `<span class="open-now-badge closed">🔴 Closed now</span>`;
+      badgeEl.innerHTML = `<span data-place="${placeId}" class="open-now-badge closed">🔴 Closed now</span>`;
     }
   }
   // Overwrites whatever's currently in the gallery slot — including a Street View placeholder
@@ -1650,10 +1674,10 @@ async function loadDetailPlaceExtras(tripId, item, myToken){
 // card badge, and the map pin hover tooltip, so all three stay visually and logically in sync.
 function openBadgeHtml(details){
   if(!details) return '';
-  if(details.businessStatus === 'CLOSED_PERMANENTLY') return `<span class="open-now-badge closed">Permanently closed</span>`;
-  if(details.businessStatus === 'CLOSED_TEMPORARILY') return `<span class="open-now-badge closed">Temporarily closed</span>`;
-  if(details.openNow === true) return `<span class="open-now-badge open">🟢 Open</span>`;
-  if(details.openNow === false) return `<span class="open-now-badge closed">🔴 Closed</span>`;
+  if(details.businessStatus === 'CLOSED_PERMANENTLY') return `<span data-place="${details.placeId}" class="open-now-badge closed">Permanently closed</span>`;
+  if(details.businessStatus === 'CLOSED_TEMPORARILY') return `<span data-place="${details.placeId}" class="open-now-badge closed">Temporarily closed</span>`;
+  if(details.openNow === true) return `<span data-place="${details.placeId}" class="open-now-badge open">🟢 Open</span>`;
+  if(details.openNow === false) return `<span data-place="${details.placeId}" class="open-now-badge closed">🔴 Closed</span>`;
   return '';
 }
 // Fills in each card's small open-now badge (day view, POI view) — same lazy resolve+cache
@@ -3172,6 +3196,33 @@ document.addEventListener('drop', async e=>{
   render(); // optimistic — reflect the new order immediately
   if(updates.length) await Promise.all(updates);
 });
+
+
+/* Tap an Open/Closed badge -> small popup with Google's weekly opening hours (today highlighted). */
+document.addEventListener('click', async function(e){
+  const badge = e.target.closest && e.target.closest('.open-now-badge[data-place]');
+  if(!badge) return;
+  e.stopPropagation(); e.preventDefault();
+  const had = document.querySelector('.hours-pop[data-for="'+badge.dataset.place+'"]');
+  closePopovers();
+  if(had) return;
+  const details = await fetchPlaceDetails(badge.dataset.place);
+  const pop = document.createElement('div');
+  pop.className = 'popover hours-pop';
+  pop.dataset.for = badge.dataset.place;
+  const todayIdx = (new Date().getDay()+6)%7; // Google lists Monday first
+  pop.innerHTML = (details && details.hours && details.hours.length)
+    ? details.hours.map((h,i)=>`<div class="hours-row${i===todayIdx?' today':''}">${escapeHtml(h)}</div>`).join('')
+    : `<div class="hours-row">Opening hours not available</div>`;
+  pop.addEventListener('click', e2=>e2.stopPropagation());
+  document.body.appendChild(pop);
+  const r = badge.getBoundingClientRect();
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  let left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if(top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  pop.style.left = left+'px'; pop.style.top = top+'px';
+}, true);
 
 function closePopovers(){
   document.querySelectorAll('.popover').forEach(p=>p.remove());
