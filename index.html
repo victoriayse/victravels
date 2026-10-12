@@ -1687,8 +1687,9 @@ async function loadCardOpenBadges(trip, items){
       const img = new Image();
       img.className = 'item-cover-img';
       img.alt = '';
-      img.loading = 'lazy';
-      img.onload = ()=>{ coverEl.innerHTML = ''; coverEl.style.background = 'none'; coverEl.appendChild(img); };
+      // Re-resolve the tile by id on load: the card list may have re-rendered meanwhile.
+      const cid = `cardcover-${item.id}`;
+      img.onload = ()=>{ const c = document.getElementById(cid); if(!c) return; c.innerHTML = ''; c.style.background = 'none'; c.appendChild(img); };
       img.src = placesPhotoUrl(details.photoName, 240);
     }
   }
