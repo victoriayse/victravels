@@ -6481,6 +6481,7 @@ function jlLocalToUtc(dateStr, timeStr, tz){
   const off2 = jlOffsetMin(tz, utc); utc = guess - off2*60000;
   return utc;
 }
+function jlClock(utc, tz){ return Math.floor(utc/60000) + jlOffsetMin(tz, utc); }
 function jlSegs(a, b){ a = Math.max(0, a); b = Math.min(1440, b); return b > a ? [{ l:a/14.4, w:(b-a)/14.4 }] : []; }
 // Pure: build the whole schedule. Returns tz difference, direction ('east'|'west'|'none') and day rows.
 function jlPlan(p){
@@ -6533,7 +6534,7 @@ function jlPlan(p){
     const s = Math.min(j, preTotal), ps = Math.min(j-1, preTotal);
     const left = 4 - j;
     days.push(mk({ kind:'pre', clock:'origin', date:jlAddDays(date, -left), label: left + (left===1 ? ' day' : ' days') + ' before departure',
-      bed: B + m*s, wake: W + m*ps, prevBed: B + m*ps, shift: m*s, adapted:false }));
+      bed: B + m*s*60, wake: W + m*ps*60, prevBed: B + m*ps*60, shift: m*s, adapted:false }));
   }
   days.push({ kind:'travel', clock:'origin', date, label:'Travel day',
     tips:[
@@ -6544,9 +6545,9 @@ function jlPlan(p){
   for(let k=1; k<=5; k++){
     const gapK = Math.max(0, R - rate*k), gapPrev = Math.max(0, R - rate*(k-1));
     days.push(mk({ kind:'post', clock:'dest', date:jlAddDays(arrDate, k-1), label: k===1 ? 'Arrival day' : 'Day ' + k + ' at destination',
-      bed: B + sgn*gapK, wake: W + sgn*gapPrev, prevBed: B + sgn*gapPrev, shift: sgn*gapK, adapted: gapK === 0, gap: gapK }));
+      bed: B + sgn*gapK*60, wake: W + sgn*gapPrev*60, prevBed: B + sgn*gapPrev*60, shift: sgn*gapK, adapted: gapK === 0, gap: gapK }));
   }
-  return { rawDiff, nd, direction, estDays, abs, rate, durationH: (arrUtc - depUtc)/3600000, arrDate, days, preTotal, big: east && abs >= 9 };
+  return { rawDiff, nd, direction, estDays, abs, rate, durationH: (arrUtc - depUtc)/3600000, arrDate, days, preTotal, big: east && abs >= 9, depUtc, arrUtc };
 }
 
 const JL = { from:'Singapore', to:'Amsterdam', date:'', depTime:'09:00', arrTime:'16:00', bed:'23:00', wake:'07:00' };
@@ -6610,12 +6611,26 @@ function jlResultHtml(){
     const arrival = plan.days.find(d=>d.kind==='post');
     const dayBeforeWake = before.wake, dayBeforeBed = before.bed;
     const travelWake = dayBeforeBed + before.dur;
-    const card = (title, sub, wake, sleep, note)=>`<div class="jl-day"><div class="jl-day-head"><span>${escapeHtml(title)}</span><small>${escapeHtml(sub)}</small></div>
-      <div class="jl-times"><div><small>Wake up</small><b>${jlFmt(wake)}</b></div><div><small>Sleep</small><b>${jlFmt(sleep)}</b></div></div>
+    // In-flight sleep: from the destination-clock bedtime (never before 1 h after take-off) until landing.
+    const arrBedMin = jlHm(JL.bed||'23:00'); // first night: your usual bedtime on local time
+    let bedUtc = null;
+    for(let dd=1; dd>=-2 && bedUtc===null; dd--){
+      const u = jlLocalToUtc(jlAddDays(plan.arrDate, -dd), jlFmt(arrBedMin), to.tz);
+      if(u <= plan.arrUtc - 90*60000 && u >= plan.depUtc) bedUtc = u;
+    }
+    const planeStart = bedUtc===null ? plan.depUtc + 60*60000 : Math.max(bedUtc, plan.depUtc + 60*60000);
+    const sleepHrs = Math.max(0, (plan.arrUtc - planeStart)/3600000);
+    const planeCard = `<div class="jl-day"><div class="jl-day-head"><span>On the flight</span><small>${fmtDateShort(JL.date)} · ${escapeHtml(from.n)} to ${escapeHtml(to.n)} (about ${Math.round(plan.durationH)} h)</small></div>
+      <div class="jl-times"><div><small>Sleep from</small><b>${jlFmt(jlClock(planeStart,to.tz))}</b><small>${escapeHtml(to.n)} time</small><small>${jlFmt(jlClock(planeStart,from.tz))} ${escapeHtml(from.n)}</small></div>
+      <div><small>Until landing</small><b>${jlFmt(jlClock(plan.arrUtc,to.tz))}</b><small>${escapeHtml(to.n)} time</small><small>${jlFmt(jlClock(plan.arrUtc,from.tz))} ${escapeHtml(from.n)}</small></div></div>
+      <div class="muted-note" style="font-size:11.5px;">${sleepHrs>=1? 'That is about '+(Math.round(sleepHrs*2)/2)+' h of sleep on board, timed to the destination night.' : 'Landing soon after your destination bedtime, so little sleep is possible on board.'} After landing, stay up until about ${jlFmt(arrBedMin)} ${escapeHtml(to.n)} time for your first night.</div></div>`;
+    const card = (title, sub, wake, sleep, note, sleepLabel)=>`<div class="jl-day"><div class="jl-day-head"><span>${escapeHtml(title)}</span><small>${escapeHtml(sub)}</small></div>
+      <div class="jl-times"><div><small>Wake up</small><b>${jlFmt(wake)}</b></div>${sleep===null?'':`<div><small>${sleepLabel||'Sleep'}</small><b>${jlFmt(sleep)}</b></div>`}</div>
       ${note?`<div class="muted-note" style="font-size:11.5px;">${escapeHtml(note)}</div>`:''}</div>`;
     return `<div class="jl-sum"><b>Time-zone difference: ${dirText}</b></div>
       ${card('Day before', fmtDateShort(before.date)+' · '+from.n+' time', dayBeforeWake, dayBeforeBed, '')}
-      ${card('Travel day', fmtDateShort(JL.date)+' · wake on '+from.n+' time, sleep on '+to.n+' time', travelWake, arrival.bed, 'Wake time is on your home clock; the sleep time is your first night at the destination.')}
+      ${card('Travel day', fmtDateShort(JL.date)+' · '+from.n+' time', travelWake, null, 'Keep this wake-up time, then board your flight.')}
+      ${planeCard}
       <p class="muted-note" style="font-size:11.5px;margin-top:10px;">General guidance only, not medical advice.</p>`;
   }
   let sum = `<b>Time-zone difference: ${dirText}</b>`;
