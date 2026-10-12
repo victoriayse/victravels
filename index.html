@@ -4264,22 +4264,23 @@ function downscaleImageToDataUrl(file, maxSide, quality){
   });
 }
 // Free models are often busy or rate-limited, so try several in turn until one answers.
+// dots-3 is a reasoning model: it spends tokens thinking first, so it needs a generous max_tokens.
 const AI_MODEL_CHAIN = [
+  'dots-studio/dots-3-note-preview:free',
   'google/gemma-4-31b-it:free',
   'google/gemma-4-26b-a4b-it:free',
-  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free',
-  'dots-studio/dots-3-note-preview:free'
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
 ];
 async function callOpenRouter(content){
   let lastStatus = 0, lastNetwork = false, lastTimeout = false;
   for(const model of AI_MODEL_CHAIN){
     const ctrl = new AbortController();
-    const timer = setTimeout(()=>ctrl.abort(), 40000);
+    const timer = setTimeout(()=>ctrl.abort(), 60000);
     try{
       const res = await fetch(aiProxyUrl(), {
         method:'POST',
         headers:{ 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY, 'Content-Type':'application/json', 'x-vt-pass': PASS_HASH },
-        body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:400 }),
+        body: JSON.stringify({ model, messages:[{ role:'user', content }], temperature:0, max_tokens:800 }),
         signal: ctrl.signal
       });
       lastStatus = res.status; lastNetwork = false; lastTimeout = false;
