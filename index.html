@@ -458,6 +458,8 @@
     color:var(--text);display:flex;align-items:center;justify-content:center;
     transition:all .15s ease;
   }
+  .day-nav-bar .filter-select{background-color:#fff;border:1px solid var(--border-strong);height:36px;padding:0 14px;font-weight:600;}
+  .day-nav-bar .filter-select:focus{border-color:var(--primary);}
   .day-nav-btn:hover:not(:disabled){border-color:var(--primary);color:var(--primary-dark);}
   .day-nav-btn:disabled{opacity:.35;cursor:default;}
   .toolbar-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;}
@@ -1679,6 +1681,16 @@ async function loadCardOpenBadges(trip, items){
     if(cardOpenBadgeRenderToken !== myToken) return;
     const el = document.getElementById(`cardopenbadge-${item.id}`);
     if(el) el.innerHTML = openBadgeHtml(details);
+    // No uploaded photo on this card → swap the placeholder tile for the Google Maps photo.
+    const coverEl = document.getElementById(`cardcover-${item.id}`);
+    if(coverEl && details && details.photoName && !(item.imagePaths && item.imagePaths.length)){
+      const img = new Image();
+      img.className = 'item-cover-img';
+      img.alt = '';
+      img.loading = 'lazy';
+      img.onload = ()=>{ coverEl.innerHTML = ''; coverEl.style.background = 'none'; coverEl.appendChild(img); };
+      img.src = placesPhotoUrl(details.photoName, 240);
+    }
   }
 }
 
@@ -3065,7 +3077,7 @@ function renderItemCard(item, trip){
         <img class="item-cover-img" src="${coverPublicUrl(item.imagePaths[0])}" alt="" loading="lazy">
         ${item.imagePaths.length>1? `<span class="item-cover-count">+${item.imagePaths.length-1}</span>` : ''}
       </div>`
-    : `<div class="item-cover-wrap item-cover-fallback" style="background:linear-gradient(160deg,rgba(255,255,255,0.22),rgba(0,0,0,0.18)),${item.cardColor||TYPE_COLORS[item.type]||'#948d7c'};">${iconGlyphHtml(item, 24)}</div>`;
+    : `<div class="item-cover-wrap item-cover-fallback" id="cardcover-${item.id}" style="background:linear-gradient(160deg,rgba(255,255,255,0.22),rgba(0,0,0,0.18)),${item.cardColor||TYPE_COLORS[item.type]||'#948d7c'};">${iconGlyphHtml(item, 24)}</div>`;
   const notesLong = item.notes && item.notes.replace(/<[^>]+>/g,'').length > 140;
   const linkedNotes = linkifyNotes(item.notes);
   const notesHtml = item.notes ? (
