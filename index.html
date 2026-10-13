@@ -739,6 +739,8 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  .view-map-btn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:var(--bg-soft);color:var(--text);border:none;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;}
+  .view-map-btn:hover{filter:brightness(.95);}
   .type-pill{background:var(--bg-soft);color:var(--text);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:.02em;}
   .drag-group::before{display:none;}
   .card-distance-badge{margin-left:8px;}
@@ -747,7 +749,6 @@
   .map-star{transition:transform .18s ease;}
   .map-star.pin-active{transform:scale(1.6);}
   .item-card.item-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,91,213,0.25);}
-  .item-card.item-selected .item-main::after{content:'Tap again for details \203A';display:block;font-size:11.5px;font-weight:600;color:var(--primary);margin-top:6px;}
   .trip-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .trip-actions .btn{white-space:nowrap;}
   .item-meta>span,.item-meta .nav-btn,.item-meta .status-badge{white-space:nowrap;}
@@ -3236,13 +3237,16 @@ async function loadDistanceBadges(trip, items){
   }
 }
 
-// Tap a listing card: its pin pops (enlarges) on the map and the map pans to it. Tapping the
-// same, already-selected card again opens its details. Cards with no map pin open details at once.
+// Tap a listing card: its pin pops (enlarges) on the map and the map pans to it, and the
+// card's details window opens.
 let selectedCardItemId = null;
 function onItemCardClick(ev, tripId, itemId){
-  const pin = tripMapPins[itemId];
-  if(!pin || selectedCardItemId === itemId){ openItemDetailModal(tripId, itemId); return; }
-  selectCardPin(itemId);
+  // Tapping the card only opens the details window; the map pin pops via "View on map".
+  openItemDetailModal(tripId, itemId);
+}
+function viewItemOnMap(ev, itemId){
+  if(ev) ev.stopPropagation();
+  if(tripMapPins[itemId]) selectCardPin(itemId);
 }
 function selectCardPin(itemId){
   selectedCardItemId = itemId;
@@ -3299,6 +3303,7 @@ function renderItemCard(item, trip){
           ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigation</a>`:''}
           ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
+        ${item.lat!=null && item.lng!=null? `<button type="button" class="view-map-btn" onclick="viewItemOnMap(event,'${item.id}')">🗺️ View on map</button>`:''}
         ${notesHtml}
       </div>
       <div class="item-side">
@@ -5866,7 +5871,6 @@ function openItemDetailModal(tripId, itemId){
       ${item.mapsLink? `<button type="button" class="nav-btn" onclick="shareLocation('${trip.id}','${item.id}')">📤 Share Location</button>`:''}
     </div>` : ''}
     ${item.notes? `<div class="detail-notes">${linkedNotes}</div>` : ''}
-    ${btSectionHtml(trip, item)}
     ${(item.files&&item.files.length)? `<div class="detail-files">
       ${item.files.map((f,idx)=>`<span class="file-pill" onclick="openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('')}
     </div>` : ''}
