@@ -2053,9 +2053,10 @@ function afterRender(){
 // dropdown. Disabled (see renderTripDetail) at either end of the trip or while "All Days"
 // is selected, since "next" from "All Days" is ambiguous.
 function shiftDay(delta){
-  if(ui.dayFilter==='all') return;
   const trip = getTrip(ui.detailTripId);
   if(!trip) return;
+  // From "All Days", > jumps to Day 0; < does nothing (it stays disabled).
+  if(ui.dayFilter==='all'){ if(delta>0){ ui.dayFilter = '0'; render(); } return; }
   const numDays = tripDays(trip);
   let next = Number(ui.dayFilter) + delta;
   next = Math.max(0, Math.min(numDays-1, next));
@@ -2507,20 +2508,25 @@ function renderHome(){
       </select>
     </div>
     ${renderBookingWindowsCard()}
+    <div class="home-grid" style="grid-template-columns:minmax(0,1fr);">
+      ${renderFlightCard(trip)}
+    </div>
     ${renderCurrencyConverterCard()}
     <div class="home-grid">
       ${renderCountdownCard(trip)}
       ${renderOverviewCard(trip)}
     </div>
+    <div class="home-grid" style="grid-template-columns:minmax(0,1fr);">
+      ${taxToolCardHtml()}
+    </div>
     <div class="home-grid">
-      ${renderFlightCard(trip)}
       ${renderAccommodationsCard(trip)}
+      ${renderExpensesCard(trip)}
     </div>
     <div class="home-grid">
-      ${renderExpensesCard(trip)}
       ${renderTasksCard(trip)}
+      ${jetLagToolCardHtml()}
     </div>
-    ${renderToolsSection()}
   `;
 }
 
@@ -3016,7 +3022,7 @@ function renderTripDetail(){
           return `<option value="${i}" ${ui.dayFilter===String(i)?'selected':''}>${label}</option>`;
         }).join('')}
       </select>
-      <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter==='all'||Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
+      <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter!=='all'&&Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
       ${ui.dayFilter!=='all'? `<button class="btn btn-sm btn-share" style="margin-left:auto;" onclick="shareDayPlan('${trip.id}')" title="Share this day's plan">Share Day</button>` : ''}
     </div>
     <div class="filter-bar">
@@ -5849,26 +5855,32 @@ function detailGalleryNav(delta){
 }
 
 /* ============ HOME: TOOLS SECTION ============ */
-function renderToolsSection(){
-  return `
-    <div class="tools-heading">🧰 Tools</div>
-    <div class="home-grid">
-      <div class="card tool-card" role="button" tabindex="0" onclick="openTaxRefundModal()">
+function taxToolCardHtml(){
+  return `<div class="card tool-card" role="button" tabindex="0" onclick="openTaxRefundModal()">
         <span class="flight-icon">🧾</span>
         <div style="flex:1;min-width:0;">
           <div class="flight-name">Tax Refund Calculator</div>
           <div class="flight-meta">VAT / tourist tax refund estimate and how to claim it</div>
         </div>
         <span class="tool-chev">›</span>
-      </div>
-      <div class="card tool-card" role="button" tabindex="0" onclick="openJetLagModal()">
+      </div>`;
+}
+function jetLagToolCardHtml(){
+  return `<div class="card tool-card" role="button" tabindex="0" onclick="openJetLagModal()">
         <span class="flight-icon">😴</span>
         <div style="flex:1;min-width:0;">
           <div class="flight-name">Jet Lag Planner</div>
           <div class="flight-meta">When to sleep and wake before your flight</div>
         </div>
         <span class="tool-chev">›</span>
-      </div>
+      </div>`;
+}
+function renderToolsSection(){
+  return `
+    <div class="tools-heading">🧰 Tools</div>
+    <div class="home-grid">
+      ${taxToolCardHtml()}
+      ${jetLagToolCardHtml()}
     </div>`;
 }
 
