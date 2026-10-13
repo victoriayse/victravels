@@ -739,13 +739,23 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
-  .crowd-chip{
-    position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;vertical-align:top;
-    margin:0 0 10px 41px;padding:5px 12px;background:var(--card-bg);border:1px solid var(--border);
-    border-radius:999px;font-size:11.5px;font-weight:600;color:var(--text-muted);text-decoration:none;
+  .trip-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .trip-actions .btn{white-space:nowrap;}
+  .item-meta>span,.item-meta .nav-btn,.item-meta .status-badge{white-space:nowrap;}
+  .notes-preview{overflow-wrap:break-word;word-break:normal;}
+  @media (max-width:480px){
+    .trip-actions{gap:6px;}
+    .trip-actions .btn{font-size:11.5px;padding:7px 11px;}
+    /* Itinerary card as a grid so the text gets the full middle column: cost/booked-by drop
+       under the text instead of taking their own column, and the photo + ⋮ sit at the far right. */
+    .item-card{display:grid;grid-template-columns:32px minmax(0,1fr) 84px 30px;grid-template-areas:"badge main cover edit" ". side side side";align-items:start;column-gap:10px;row-gap:8px;}
+    .item-card .item-type-badge{grid-area:badge;}
+    .item-card .item-main{grid-area:main;min-width:0;}
+    .item-card .item-cover-wrap{grid-area:cover;}
+    .item-card .item-edit-btn{grid-area:edit;}
+    .item-card .item-side{grid-area:side;flex-direction:row;align-items:baseline;justify-content:flex-start;gap:12px;flex-wrap:wrap;}
+    .item-name{overflow-wrap:break-word;word-break:normal;}
   }
-  .card-distance-badge:not(:empty) + .crowd-chip{margin-left:8px;}
-  .crowd-chip:hover{color:var(--primary-dark);border-color:var(--primary);}
   .open-now-badge[data-place]{cursor:pointer;}
   .popover.hours-pop{position:fixed;right:auto;padding:8px 0;min-width:230px;max-width:calc(100vw - 16px);z-index:200;}
   .hours-row{padding:5px 14px;font-size:12.5px;color:var(--text-muted);white-space:nowrap;}
@@ -2979,7 +2989,7 @@ function renderTripDetail(){
         <h1 class="page-title" style="margin:0 0 4px;">${escapeHtml(trip.name)}</h1>
         <div class="countdown-sub">${trip.startDate? fmtDateShort(trip.startDate)+' – '+fmtDateShort(trip.endDate)+' · '+numDays+' day'+(numDays===1?'':'s') : 'No dates set'} · ${trip.pax||1} pax</div>
       </div>
-      <div style="display:flex;gap:8px;">
+      <div class="trip-actions">
         <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">Trip Expenses</button>
         <button class="btn btn-sm" onclick="ui.detailTripId='${trip.id}';ui.view='finance';render();">Finance</button>
         <button class="btn btn-sm" onclick="openShoppingList('${trip.id}')">Shopping List</button>
@@ -3123,22 +3133,6 @@ function cardHasLocation(item){
 // from the last real place to the next one). The badges start empty and are filled in
 // afterwards by loadDistanceBadges() once coordinates for both ends are known — keeps the
 // initial render instant, no request-per-render-call.
-// "Crowd" chip: opens the upcoming place in Google Maps, where Google shows its own Popular
-// times and live busyness (that data isn't available through Google's API, so we link to it).
-function crowdMapsUrl(item){
-  if(item.lat != null && item.lng != null){
-    let u = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent((item.name||'') + ' ') + encodeURIComponent(item.lat + ',' + item.lng);
-    if(item.placeId) u += '&query_place_id=' + encodeURIComponent(item.placeId);
-    return u;
-  }
-  if(item.mapsLink) return item.mapsLink;
-  return item.name ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(item.name) : '';
-}
-function crowdChipHtml(item){
-  const url = crowdMapsUrl(item);
-  if(!url) return '';
-  return `<a class="crowd-chip" href="${escapeHtml(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="See popular times and live crowd for ${escapeHtml(item.name||'this place')} on Google Maps">👥 Crowd ↗</a>`;
-}
 function renderItemsWithDistanceBadges(items, trip){
   let html = '';
   items.forEach((item, idx)=>{
@@ -3149,7 +3143,6 @@ function renderItemsWithDistanceBadges(items, trip){
     if(nextIdx < items.length){
       const next = items[nextIdx];
       html += `<div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>`;
-      html += crowdChipHtml(next);
     }
   });
   return html;
