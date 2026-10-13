@@ -739,6 +739,15 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  .type-pill{background:var(--bg-soft);color:var(--text);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:.02em;}
+  .drag-group::before{display:none;}
+  .card-distance-badge{margin-left:8px;}
+  .map-pin{transition:transform .18s ease, box-shadow .18s ease;}
+  .map-pin.pin-active{transform:rotate(-45deg) scale(1.7);box-shadow:0 4px 14px rgba(0,0,0,0.5);}
+  .map-star{transition:transform .18s ease;}
+  .map-star.pin-active{transform:scale(1.6);}
+  .item-card.item-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,91,213,0.25);}
+  .item-card.item-selected .item-main::after{content:'Tap again for details \203A';display:block;font-size:11.5px;font-weight:600;color:var(--primary);margin-top:6px;}
   .trip-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .trip-actions .btn{white-space:nowrap;}
   .item-meta>span,.item-meta .nav-btn,.item-meta .status-badge{white-space:nowrap;}
@@ -748,7 +757,7 @@
     .trip-actions .btn{font-size:11.5px;padding:7px 11px;}
     /* Itinerary card as a grid so the text gets the full middle column: cost/booked-by drop
        under the text instead of taking their own column, and the photo + ⋮ sit at the far right. */
-    .item-card{display:grid;grid-template-columns:32px minmax(0,1fr) 84px 30px;grid-template-areas:"badge main cover edit" ". side side side";align-items:start;column-gap:10px;row-gap:8px;}
+    .item-card{display:grid;grid-template-columns:minmax(0,1fr) 84px 30px;grid-template-areas:"main cover edit" "side side side";align-items:start;column-gap:10px;row-gap:8px;}
     .item-card .item-type-badge{grid-area:badge;}
     .item-card .item-main{grid-area:main;min-width:0;}
     .item-card .item-cover-wrap{grid-area:cover;}
@@ -1285,6 +1294,7 @@ let expensesChart = null;
 let lastTripDetailTrip = null;
 let lastTripDetailItems = [];
 let tripMapInstance = null;
+let tripMapPins = {}; // item id -> { el, marker } so a listing card can highlight its own pin
 let tripMapRenderToken = 0;
 let myLocationMarker = null; // the "you are here" dot dropped by the map's locate button
 
@@ -2290,6 +2300,7 @@ async function initTripMap(trip, dayItems, poiItems){
     mapTypeControl:false, fullscreenControl:false, mapId:'DEMO_MAP_ID',
   });
   tripMapInstance = map;
+  tripMapPins = {};
   // This is a brand-new Map instance, so any marker from a previous render is already gone
   // along with it — drop the stale reference rather than trying to clear a dot bound to a
   // map that no longer exists.
@@ -2339,6 +2350,7 @@ async function initTripMap(trip, dayItems, poiItems){
       map, position:{ lat:item.lat, lng:item.lng }, content:el,
     });
     el.addEventListener('click', ()=> openItemDetailModal(trip.id, item.id));
+    tripMapPins[item.id] = { el, marker };
     markers.push(marker);
     if(!isStar) fitMarkers.push(marker);
     } catch(e){ console.error('addPin failed for', item && item.id, e); }
@@ -3224,6 +3236,34 @@ async function loadDistanceBadges(trip, items){
   }
 }
 
+// Tap a listing card: its pin pops (enlarges) on the map and the map pans to it. Tapping the
+// same, already-selected card again opens its details. Cards with no map pin open details at once.
+let selectedCardItemId = null;
+function onItemCardClick(ev, tripId, itemId){
+  const pin = tripMapPins[itemId];
+  if(!pin || selectedCardItemId === itemId){ openItemDetailModal(tripId, itemId); return; }
+  selectCardPin(itemId);
+}
+function selectCardPin(itemId){
+  selectedCardItemId = itemId;
+  Object.keys(tripMapPins).forEach(id=>{
+    const p = tripMapPins[id];
+    p.el.classList.toggle('pin-active', id === itemId);
+    try{ p.marker.zIndex = (id === itemId) ? 1000 : null; }catch(e){}
+  });
+  document.querySelectorAll('.item-card.item-selected').forEach(c=>c.classList.remove('item-selected'));
+  const card = document.getElementById('item-' + itemId);
+  if(card) card.classList.add('item-selected');
+  const pin = tripMapPins[itemId];
+  if(pin && tripMapInstance && pin.marker && pin.marker.position){
+    try{ tripMapInstance.panTo(pin.marker.position); }catch(e){}
+  }
+  const mapEl = document.getElementById('map-card') || document.getElementById('trip-map');
+  if(mapEl){
+    const r = mapEl.getBoundingClientRect();
+    if(r.bottom < 80 || r.top > window.innerHeight - 80) mapEl.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+}
 function renderItemCard(item, trip){
   const accent = item.cardColor ? `border-left:5px solid ${item.cardColor};` : '';
   const badgeStyle = item.cardColor ? `background:${hexToRgba(item.cardColor,0.18)};border-color:${hexToRgba(item.cardColor,0.4)};` : '';
@@ -3245,12 +3285,12 @@ function renderItemCard(item, trip){
       : `<div class="notes-preview">${linkedNotes}</div>`
   ) : '';
   return `
-    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}" onclick="openItemDetailModal('${trip.id}','${item.id}')">
+    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}" onclick="onItemCardClick(event,'${trip.id}','${item.id}')">
       <span class="drag-handle" title="Drag to reorder">⠿</span>
-      <div class="item-type-badge" style="${badgeStyle}">${iconGlyphHtml(item, 22)}</div>
       <div class="item-main">
         <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class=\"dup-badge\">Continued</span>':''}</div>
         <div class="item-meta">
+          ${item.type? `<span class="type-pill">${escapeHtml(item.type)}</span>` : ''}
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
           ${item.lat!=null && item.lng!=null? `<span id="cardopenbadge-${item.id}" class="card-openbadge"></span>`:''}
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
