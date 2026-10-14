@@ -753,6 +753,8 @@
   .leg-note-body{font-size:14px;line-height:1.6;color:var(--text);word-break:break-word;}
   .leg-note-body img,.rt-editor img{max-width:100%;border-radius:10px;margin:6px 0;display:block;}
   .leg-note-body a,.rt-editor a{color:var(--primary-dark);text-decoration:underline;}
+  .leg-note-body ul,.leg-note-body ol,#leg-note-editor ul,#leg-note-editor ol{margin:6px 0;padding-left:22px;}
+  .leg-note-body ul,#leg-note-editor ul{list-style:disc;}
   .leg-note-empty{color:var(--text-muted);font-size:14px;}
   .map-pin{transition:transform .18s ease, box-shadow .18s ease;}
   .map-pin.pin-active{transform:rotate(-45deg) scale(1.7);box-shadow:0 4px 14px rgba(0,0,0,0.5);}
@@ -3316,7 +3318,8 @@ function renderLegNoteEdit(){
       <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
       <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
       <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
-      <button type="button" onmousedown="event.preventDefault()" onclick="document.getElementById('leg-note-img').click()">🖼️ Image</button>
+      <button type="button" onmousedown="event.preventDefault()" title="Bullet list" aria-label="Bullet list" onclick="document.execCommand('insertUnorderedList')">•≡</button>
+      <button type="button" onmousedown="event.preventDefault()" title="Insert image" aria-label="Insert image" style="display:flex;align-items:center;justify-content:center;padding:0;line-height:1;" onclick="document.getElementById('leg-note-img').click()">🖼️</button>
       <input type="file" id="leg-note-img" accept="image/*" class="hidden" onchange="insertLegNoteImage(event)">
     </div>
     <div class="rt-editor" id="leg-note-editor" contenteditable="true" style="min-height:140px;">${sanitizeNoteHtml(note)}</div>
