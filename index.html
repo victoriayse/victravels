@@ -3173,8 +3173,9 @@ function renderItemsWithDistanceBadges(items, trip){
     while(nextIdx < items.length && !cardHasLocation(items[nextIdx])) nextIdx++;
     if(nextIdx < items.length){
       const next = items[nextIdx];
-      const legKey = `leg_${item.id}_${next.id}`;
-      const hasNote = !!(trip.dayTitles && trip.dayTitles[legKey]);
+      // Keyed by the card ABOVE the gap, so the note follows that card when cards are dragged around.
+      const legKey = `leg_${item.id}`;
+      const hasNote = !!legNoteGet(trip, legKey);
       html += `<div class="leg-row"><div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>
         <button type="button" class="leg-notes-btn${hasNote?' has-note':''}" onclick="openLegNotes('${trip.id}','${legKey}')">📝 Notes${hasNote?' ·':''}</button></div>`;
     }
@@ -3293,6 +3294,13 @@ function autoLinkNode(root){
     t.parentNode.replaceChild(frag, t);
   });
 }
+// Reads a note by "leg_<fromId>", falling back to older "leg_<fromId>_<toId>" keys.
+function legNoteGet(trip, legKey){
+  const t = (trip && trip.dayTitles) || {};
+  if(t[legKey]) return t[legKey];
+  const k = Object.keys(t).find(x=>x.startsWith(legKey+'_'));
+  return k ? t[k] : '';
+}
 let legNoteCtx = null;
 function openLegNotes(tripId, legKey){
   legNoteCtx = { tripId, legKey };
@@ -3300,7 +3308,7 @@ function openLegNotes(tripId, legKey){
 }
 function renderLegNoteView(){
   const trip = getTrip(legNoteCtx.tripId);
-  const note = trip && trip.dayTitles ? trip.dayTitles[legNoteCtx.legKey] : '';
+  const note = legNoteGet(trip, legNoteCtx.legKey);
   openModal(`
     <div class="modal-header"><h3>Notes</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
     ${note ? `<div class="leg-note-body">${sanitizeNoteHtml(note)}</div>` : `<div class="leg-note-empty">No notes yet.</div>`}
@@ -3312,7 +3320,7 @@ function renderLegNoteView(){
 }
 function renderLegNoteEdit(){
   const trip = getTrip(legNoteCtx.tripId);
-  const note = trip && trip.dayTitles ? (trip.dayTitles[legNoteCtx.legKey] || '') : '';
+  const note = legNoteGet(trip, legNoteCtx.legKey);
   openModal(`
     <div class="modal-header"><h3>${note ? 'Edit notes' : 'Add notes'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
     <div class="rt-toolbar">
@@ -3353,7 +3361,8 @@ async function saveLegNote(){
   if(!ed.textContent.trim() && !ed.querySelector('img')) html = '';
   const trip = getTrip(legNoteCtx.tripId);
   const titles = { ...(trip.dayTitles||{}) };
-  if(html) titles[legNoteCtx.legKey] = html; else delete titles[legNoteCtx.legKey];
+  Object.keys(titles).forEach(k=>{ if(k===legNoteCtx.legKey || k.startsWith(legNoteCtx.legKey+'_')) delete titles[k]; });
+  if(html) titles[legNoteCtx.legKey] = html;
   const { error } = await sb.from('trips').update({ day_titles: titles }).eq('id', legNoteCtx.tripId);
   if(error){ alert('Could not save notes: '+error.message); return; }
   trip.dayTitles = titles;
