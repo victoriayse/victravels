@@ -1020,14 +1020,14 @@ const COLOR_GRID = (function(){
 })();
 function renderColorSwatches(selected){
   const isDefault = !selected;
-  const triggerStyle = selected ? `background:${selected};` : '';
-  const quickRow = `<button type="button" class="color-swatch color-swatch-default ${isDefault?'active':''}" data-hex="" title="Automatic" onclick="selectCardColor('')">&#10005;</button>` +
+  const triggerStyle = `background:${selected || '#ffffff'};`;
+  const quickRow = `<button type="button" class="color-swatch color-swatch-default ${isDefault?'active':''}" data-hex="" title="White (default)" style="background:#fff;" onclick="selectCardColor('')">&#10005;</button>` +
     QUICK_COLORS.map(hex=>`<button type="button" class="color-swatch ${selected===hex?'active':''}" data-hex="${hex}" style="background:${hex};" title="${hex}" onclick="selectCardColor('${hex}')"></button>`).join('');
   const grid = COLOR_GRID.map(row=>`<div class="color-grid-row">${row.map(hex=>
     `<button type="button" class="color-cell ${selected===hex?'active':''}" data-hex="${hex}" style="background:${hex};" title="${hex}" onclick="selectCardColor('${hex}')"></button>`).join('')}</div>`).join('');
   return `
     <div class="color-picker" id="color-picker-wrap">
-      <button type="button" class="color-trigger" id="color-trigger" style="${triggerStyle}" onclick="toggleColorPicker()">${selected?'':'&#10005;'}</button>
+      <button type="button" class="color-trigger" id="color-trigger" style="${triggerStyle}" onclick="toggleColorPicker()"></button>
       <div class="color-picker-panel hidden" id="color-picker-panel">
         <div class="color-quick-row">${quickRow}</div>
         <div class="color-grid">${grid}</div>
@@ -1056,8 +1056,8 @@ function selectCardColor(hex){
   });
   const trigger = document.getElementById('color-trigger');
   if(trigger){
-    trigger.style.background = hex || '';
-    trigger.innerHTML = hex ? '' : '&#10005;';
+    trigger.style.background = hex || '#ffffff';
+    trigger.innerHTML = '';
   }
   toggleColorPicker(false);
 }
@@ -3282,7 +3282,7 @@ function renderItemCard(item, trip){
         <img class="item-cover-img" src="${coverPublicUrl(item.imagePaths[0])}" alt="" loading="lazy">
         ${item.imagePaths.length>1? `<span class="item-cover-count">+${item.imagePaths.length-1}</span>` : ''}
       </div>`
-    : `<div class="item-cover-wrap item-cover-fallback" id="cardcover-${item.id}" style="background:linear-gradient(160deg,rgba(255,255,255,0.22),rgba(0,0,0,0.18)),${item.cardColor||TYPE_COLORS[item.type]||'#948d7c'};">${iconGlyphHtml(item, 24)}</div>`;
+    : `<div class="item-cover-wrap item-cover-fallback" id="cardcover-${item.id}" style="${item.cardColor ? `background:linear-gradient(160deg,rgba(255,255,255,0.22),rgba(0,0,0,0.18)),${item.cardColor};` : 'background:var(--bg-soft);color:var(--text-muted);'}">${iconGlyphHtml(item, 24)}</div>`;
   const notesLong = item.notes && item.notes.replace(/<[^>]+>/g,'').length > 140;
   const linkedNotes = linkifyNotes(item.notes);
   const notesHtml = item.notes ? (
@@ -3696,7 +3696,7 @@ function openAddItemModal(tripId, itemId, forcedIsPoi, defaultDate){
       <label class="field-label">Card Color</label>
       ${renderColorSwatches(item&&item.cardColor?item.cardColor:'')}
       <input type="hidden" id="item-color-input" value="${item&&item.cardColor?item.cardColor:''}" data-enabled="${item&&item.cardColor?'1':'0'}">
-      <span class="muted-note">Used for the card accent and its pin on the map. The &#10005; swatch resets to automatic.</span>
+      <span class="muted-note">Used for the card accent and its pin on the map. White is the default; the &#10005; swatch resets to white.</span>
     </div>
     <div class="field">
       <label class="field-label">Name</label>
@@ -3820,11 +3820,21 @@ function coverPublicUrl(path){
 function renderCoverPreview(){
   const el = document.getElementById('cover-preview');
   if(!el) return;
+  // The first photo is the card's cover; "Set as cover" moves another photo to the front.
   el.innerHTML = tempCoverPaths.map((path, idx)=>`
-    <div style="position:relative;display:inline-block;">
-      <img src="${coverPublicUrl(path)}" style="width:120px;height:90px;object-fit:cover;border-radius:10px;border:1px solid var(--border);display:block;">
+    <div style="position:relative;display:inline-block;margin:0 10px 10px 0;vertical-align:top;">
+      <img src="${coverPublicUrl(path)}" style="width:120px;height:90px;object-fit:cover;border-radius:10px;border:${idx===0?'2px solid var(--text)':'1px solid var(--border)'};display:block;">
       <button type="button" onclick="removeCoverImage(${idx})" style="position:absolute;top:-8px;right:-8px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:13px;line-height:1;">&times;</button>
+      ${idx===0
+        ? `<span style="position:absolute;left:6px;bottom:6px;background:var(--text);color:#fff;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;">★ Cover</span>`
+        : `<button type="button" onclick="setCoverImage(${idx})" style="position:absolute;left:6px;bottom:6px;background:rgba(255,255,255,.92);color:var(--text);border:none;font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:999px;cursor:pointer;font-family:inherit;">Set as cover</button>`}
     </div>`).join('');
+}
+function setCoverImage(idx){
+  if(idx<=0 || idx>=tempCoverPaths.length) return;
+  const [p] = tempCoverPaths.splice(idx,1);
+  tempCoverPaths.unshift(p);
+  renderCoverPreview();
 }
 // Supabase Storage rejects object keys with spaces or other non-URL-safe characters
 // (common in default screenshot/download filenames like "Screenshot 2026-09-01 at
