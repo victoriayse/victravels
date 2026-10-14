@@ -3308,6 +3308,7 @@ function renderLegNoteView(){
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn btn-primary" onclick="renderLegNoteEdit()">${note ? '✏️ Edit' : '+ Add'}</button>
     </div>`);
+  modalPreventOutsideClose = true;
 }
 function renderLegNoteEdit(){
   const trip = getTrip(legNoteCtx.tripId);
@@ -3327,6 +3328,7 @@ function renderLegNoteEdit(){
       <button class="btn" onclick="renderLegNoteView()">Cancel</button>
       <button class="btn btn-primary" onclick="saveLegNote()">Save</button>
     </div>`);
+  modalPreventOutsideClose = true;
 }
 async function insertLegNoteImage(e){
   const file = e.target.files[0]; e.target.value = '';
