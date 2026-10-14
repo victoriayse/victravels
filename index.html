@@ -746,6 +746,14 @@
   .type-pill{background:var(--bg-soft);color:var(--text);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:.02em;}
   .drag-group::before{display:none;}
   .card-distance-badge{margin-left:8px;}
+  .leg-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin:0 0 10px 41px;}
+  .leg-row .card-distance-badge{margin:0;}
+  .leg-notes-btn{display:inline-flex;align-items:center;gap:5px;background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:600;color:var(--text-muted);box-shadow:var(--shadow);cursor:pointer;font-family:inherit;min-height:26px;}
+  .leg-notes-btn:hover,.leg-notes-btn.has-note{color:var(--primary-dark);border-color:var(--primary);}
+  .leg-note-body{font-size:14px;line-height:1.6;color:var(--text);word-break:break-word;}
+  .leg-note-body img,.rt-editor img{max-width:100%;border-radius:10px;margin:6px 0;display:block;}
+  .leg-note-body a,.rt-editor a{color:var(--primary-dark);text-decoration:underline;}
+  .leg-note-empty{color:var(--text-muted);font-size:14px;}
   .map-pin{transition:transform .18s ease, box-shadow .18s ease;}
   .map-pin.pin-active{transform:rotate(-45deg) scale(1.7);box-shadow:0 4px 14px rgba(0,0,0,0.5);}
   .map-star{transition:transform .18s ease;}
@@ -3163,7 +3171,10 @@ function renderItemsWithDistanceBadges(items, trip){
     while(nextIdx < items.length && !cardHasLocation(items[nextIdx])) nextIdx++;
     if(nextIdx < items.length){
       const next = items[nextIdx];
-      html += `<div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>`;
+      const legKey = `leg_${item.id}_${next.id}`;
+      const hasNote = !!(trip.dayTitles && trip.dayTitles[legKey]);
+      html += `<div class="leg-row"><div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>
+        <button type="button" class="leg-notes-btn${hasNote?' has-note':''}" onclick="openLegNotes('${trip.id}','${legKey}')">📝 Notes${hasNote?' ·':''}</button></div>`;
     }
   });
   return html;
@@ -3237,6 +3248,112 @@ async function loadDistanceBadges(trip, items){
       el.onclick = (ev)=> showNavMethodsPopover(ev, a.lat, a.lng, b.lat, b.lng);
     }
   }
+}
+
+/* ---- Notes between two cards (stored in the trip's day_titles JSON under "leg_<from>_<to>") ---- */
+function sanitizeNoteHtml(html){
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html || '';
+  const ok = new Set(['B','I','U','STRONG','EM','BR','DIV','P','SPAN','A','IMG','UL','OL','LI']);
+  (function walk(node){
+    Array.from(node.childNodes).forEach(ch=>{
+      if(ch.nodeType===1){
+        if(!ok.has(ch.tagName)){ ch.remove(); return; }
+        Array.from(ch.attributes).forEach(a=>{
+          const n=a.name.toLowerCase(), v=a.value.trim();
+          if(ch.tagName==='A' && n==='href' && /^https?:/i.test(v)) return;
+          if(ch.tagName==='IMG' && n==='src' && /^https:/i.test(v)) return;
+          ch.removeAttribute(a.name);
+        });
+        if(ch.tagName==='A'){ ch.setAttribute('target','_blank'); ch.setAttribute('rel','noopener'); }
+        walk(ch);
+      }
+    });
+  })(tpl.content);
+  return tpl.innerHTML;
+}
+function autoLinkNode(root){
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = []; let n;
+  while((n = walker.nextNode())) if(!n.parentElement.closest('a') && /https?:\/\/\S/.test(n.nodeValue)) nodes.push(n);
+  nodes.forEach(t=>{
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    t.nodeValue.replace(/https?:\/\/[^\s<]+/g, (m, off)=>{
+      const trail = (m.match(/[.,;:!?)\]]+$/)||[''])[0];
+      const clean = trail ? m.slice(0, -trail.length) : m;
+      frag.appendChild(document.createTextNode(t.nodeValue.slice(last, off)));
+      const a = document.createElement('a'); a.href = clean; a.textContent = clean; frag.appendChild(a);
+      last = off + clean.length;
+      return m;
+    });
+    frag.appendChild(document.createTextNode(t.nodeValue.slice(last)));
+    t.parentNode.replaceChild(frag, t);
+  });
+}
+let legNoteCtx = null;
+function openLegNotes(tripId, legKey){
+  legNoteCtx = { tripId, legKey };
+  renderLegNoteView();
+}
+function renderLegNoteView(){
+  const trip = getTrip(legNoteCtx.tripId);
+  const note = trip && trip.dayTitles ? trip.dayTitles[legNoteCtx.legKey] : '';
+  openModal(`
+    <div class="modal-header"><h3>Notes</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    ${note ? `<div class="leg-note-body">${sanitizeNoteHtml(note)}</div>` : `<div class="leg-note-empty">No notes yet.</div>`}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" onclick="renderLegNoteEdit()">${note ? '✏️ Edit' : '+ Add'}</button>
+    </div>`);
+}
+function renderLegNoteEdit(){
+  const trip = getTrip(legNoteCtx.tripId);
+  const note = trip && trip.dayTitles ? (trip.dayTitles[legNoteCtx.legKey] || '') : '';
+  openModal(`
+    <div class="modal-header"><h3>${note ? 'Edit notes' : 'Add notes'}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div class="rt-toolbar">
+      <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+      <button type="button" onmousedown="event.preventDefault()" onclick="document.getElementById('leg-note-img').click()">🖼️ Image</button>
+      <input type="file" id="leg-note-img" accept="image/*" class="hidden" onchange="insertLegNoteImage(event)">
+    </div>
+    <div class="rt-editor" id="leg-note-editor" contenteditable="true" style="min-height:140px;">${sanitizeNoteHtml(note)}</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+      <button class="btn" onclick="renderLegNoteView()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLegNote()">Save</button>
+    </div>`);
+}
+async function insertLegNoteImage(e){
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  const ed = document.getElementById('leg-note-editor');
+  beginLoading();
+  try{
+    let blob = file, name = sanitizeFileName(file.name);
+    try{ blob = await compressImageFile(file); name = withJpgExt(file.name); }catch(_){}
+    const path = `shared/legnotes/${Date.now()}_${name}`;
+    const { error } = await sb.storage.from('attachments').upload(path, blob);
+    if(error){ alert('Image upload failed: '+error.message); return; }
+    ed.focus();
+    document.execCommand('insertImage', false, coverPublicUrl(path));
+  } finally { endLoading(); }
+}
+async function saveLegNote(){
+  const ed = document.getElementById('leg-note-editor');
+  if(!ed) return;
+  autoLinkNode(ed);
+  let html = sanitizeNoteHtml(ed.innerHTML).trim();
+  if(!ed.textContent.trim() && !ed.querySelector('img')) html = '';
+  const trip = getTrip(legNoteCtx.tripId);
+  const titles = { ...(trip.dayTitles||{}) };
+  if(html) titles[legNoteCtx.legKey] = html; else delete titles[legNoteCtx.legKey];
+  const { error } = await sb.from('trips').update({ day_titles: titles }).eq('id', legNoteCtx.tripId);
+  if(error){ alert('Could not save notes: '+error.message); return; }
+  trip.dayTitles = titles;
+  render();
+  renderLegNoteView();
 }
 
 // Tap a listing card: its pin pops (enlarges) on the map and the map pans to it, and the
