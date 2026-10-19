@@ -2044,7 +2044,33 @@ function render(){
   else if(ui.view==='finance') app.innerHTML = renderFinance();
   else if(ui.view==='today') app.innerHTML = renderToday();
   afterRender();
+  navSync();
 }
+
+/* ---- Browser Back button: each page change is a history entry; open popups close on Back ---- */
+let navSig = null, navIgnorePop = false, navSkipModalHistory = false;
+function navState(extra){ return Object.assign({ vt:1, view:ui.view, detailTripId:ui.detailTripId||null, homeTripId:ui.homeTripId||null }, extra||{}); }
+function navSync(){
+  try{
+    const sig = [ui.view, ui.detailTripId||'', ui.homeTripId||''].join('|');
+    if(navSig === null){ history.replaceState(navState(), ''); }
+    else if(sig !== navSig){ history.pushState(navState(), ''); }
+    navSig = sig;
+  }catch(e){}
+}
+window.addEventListener('popstate', e=>{
+  if(navIgnorePop){ navIgnorePop = false; return; }
+  const overlay = document.getElementById('modal-overlay');
+  if(overlay && !overlay.classList.contains('hidden')){ navSkipModalHistory = true; closeModal(); navSkipModalHistory = false; }
+  const s = e.state;
+  if(!s || !s.vt || s.modal) return;
+  const sig = [s.view, s.detailTripId||'', s.homeTripId||''].join('|');
+  if(sig === navSig) return;
+  ui.view = s.view; ui.detailTripId = s.detailTripId; ui.homeTripId = s.homeTripId;
+  navSig = sig;
+  closePopovers();
+  render();
+});
 
 function afterRender(){
   // Loaded on every view, not just Home — EUR-priced items can show a converted-to-SGD
@@ -5766,8 +5792,13 @@ function openModal(html, wide, sheet){
   modal.className = 'modal' + (wide ? ' modal-wide' : '') + (sheet ? ' modal-sheet' : '');
   modal.innerHTML = html;
   document.getElementById('modal-overlay').classList.remove('hidden');
+  try{ if(!(history.state && history.state.modal)) history.pushState(navState({ modal:1 }), ''); }catch(e){}
 }
 function closeModal(){
+  const wasOpen = !document.getElementById('modal-overlay').classList.contains('hidden');
+  if(wasOpen && !navSkipModalHistory){
+    try{ if(history.state && history.state.modal){ navIgnorePop = true; history.back(); } }catch(e){}
+  }
   document.getElementById('modal-overlay').classList.add('hidden');
   document.getElementById('modal-content').innerHTML = '';
   document.getElementById('modal-content').className = 'modal';
@@ -6017,12 +6048,53 @@ function openItemDetailModal(tripId, itemId){
     ${(item.files&&item.files.length)? `<div class="detail-files">
       ${item.files.map((f,idx)=>`<span class="file-pill" onclick="openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('')}
     </div>` : ''}
+    ${item.isPoi && trip.startDate ? `<div id="poi-add-wrap" style="margin-top:16px;">
+      <button type="button" class="btn btn-primary" style="width:100%;" onclick="showPoiDayPicker('${trip.id}','${item.id}')">🗓️ Add to Itinerary</button>
+    </div>` : ''}
     <div class="modal-footer">
       <button class="btn" onclick="closeModal();openAddItemModal('${trip.id}','${item.id}')">✏️ Edit</button>
-      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+      <button class="btn ${item.isPoi?'':'btn-primary'}" onclick="closeModal()">Close</button>
     </div>`;
   openModal(html, true);
   loadDetailPlaceExtras(trip.id, item, myToken);
+}
+function showPoiDayPicker(tripId, itemId){
+  const trip = getTrip(tripId);
+  const wrap = document.getElementById('poi-add-wrap');
+  if(!trip || !wrap) return;
+  let n = 1;
+  if(trip.endDate) n = Math.max(1, daysBetween(trip.startDate, trip.endDate) + 1);
+  const opts = [];
+  for(let d=0; d<n; d++){
+    const dt = addDays(trip.startDate, d);
+    opts.push(`<option value="${dt}">Day ${d} · ${escapeHtml(fmtDateShort(dt))}${trip.dayTitles&&trip.dayTitles[d]?' · '+escapeHtml(trip.dayTitles[d]):''}</option>`);
+  }
+  wrap.innerHTML = `
+    <label style="display:block;font-size:13px;font-weight:600;margin-bottom:6px;">Add to which day?</label>
+    <div style="display:flex;gap:8px;">
+      <select id="poi-add-day" class="filter-select" style="flex:1;min-width:0;">${opts.join('')}</select>
+      <button type="button" class="btn btn-primary" onclick="addPoiToItinerary('${tripId}','${itemId}')">Add</button>
+    </div>`;
+}
+async function addPoiToItinerary(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  const sel = document.getElementById('poi-add-day');
+  if(!item || !sel || !sel.value) return;
+  const day = sel.value;
+  const maxOrder = Math.max(0, ...trip.items.filter(i=>!i.isPoi && i.dateStart===day).map(i=>i.order||0));
+  beginLoading();
+  try{
+    const upd = { is_poi: false, date_start: day, date_end: day, sort_order: maxOrder + 1 };
+    const { error } = await sb.from('activities').update(upd).eq('id', itemId);
+    if(error){ alert('Could not add to itinerary: '+error.message); return; }
+    item.isPoi = false; item.dateStart = day; item.dateEnd = day; item.order = maxOrder + 1;
+    closeModal();
+    render();
+    showToast('Added to itinerary');
+  } finally {
+    endLoading();
+  }
 }
 function renderDetailGalleryHtml(){
   const multi = detailGalleryImages.length > 1;
