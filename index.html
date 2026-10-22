@@ -741,6 +741,8 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  .item-files-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+  .item-files-row .file-pill{max-width:100%;}
   .view-map-btn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:var(--bg-soft);color:var(--text);border:none;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;}
   .view-map-btn:hover{filter:brightness(.95);}
   .type-pill{background:var(--bg-soft);color:var(--text);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:.02em;}
@@ -3460,8 +3462,8 @@ function renderItemCard(item, trip){
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
           ${item.link? `<a class="nav-btn" href="${escapeHtml(item.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 Link</a>`:''}
           ${item.mapsLink? `<a class="nav-btn" href="${escapeHtml(item.mapsLink)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigation</a>`:''}
-          ${(item.files&&item.files.length)? item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('') : ''}
         </div>
+        ${(item.files&&item.files.length)? `<div class="item-files-row">${item.files.map((f,idx)=>`<span class="file-pill" onclick="event.stopPropagation();openFilePreviewFor('${trip.id}','${item.id}',${idx})" title="${escapeHtml(f.name)}"><span class="file-pill-icon">📎</span><span class="file-pill-name">${escapeHtml(f.name)}</span></span>`).join('')}</div>` : ''}
         ${item.lat!=null && item.lng!=null? `<button type="button" class="view-map-btn" onclick="viewItemOnMap(event,'${item.id}')">🗺️ View on map</button>`:''}
         ${notesHtml}
       </div>
