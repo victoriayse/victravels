@@ -741,6 +741,14 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  .pin-tools{margin-top:16px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;}
+  .pin-color-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .pin-color-label{font-size:13px;font-weight:600;color:var(--text-muted);margin-right:4px;}
+  .pin-swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.18);}
+  .pin-swatch.active{border-color:var(--text);box-shadow:0 0 0 2px var(--card-bg),0 0 0 3px var(--text);}
+  .done-pill{background:#e1f3ea;color:#2f7d56;font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;}
+  .item-card.item-done .item-name{text-decoration:line-through;text-decoration-color:rgba(0,0,0,.35);}
+  .item-card.item-done{opacity:.78;}
   .item-files-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
   .item-files-row .file-pill{max-width:100%;}
   .view-map-btn{display:inline-flex;align-items:center;gap:6px;margin-top:8px;background:var(--bg-soft);color:var(--text);border:none;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;}
@@ -2245,10 +2253,55 @@ function dayNumberFor(trip, item){
   if(!item.dateStart || !trip.startDate) return null;
   return daysBetween(trip.startDate, item.dateStart);
 }
+/* ---- Per-place extras: completed + custom pin color (kept in the trip's day_titles JSON as "x_<itemId>") ---- */
+const PIN_COLORS = ['', '#e5484d', '#f5a524', '#f2d13d', '#3f9d6b', '#3b82f6', '#8b5cf6', '#ec4899', '#374151'];
+const PIN_DONE_COLOR = '#3f9d6b';
+function getItemExtras(trip, item){
+  try{
+    const raw = trip && trip.dayTitles && item ? trip.dayTitles['x_'+item.id] : null;
+    return raw ? (JSON.parse(raw) || {}) : {};
+  }catch(e){ return {}; }
+}
+async function saveItemExtras(tripId, itemId, patch){
+  const trip = getTrip(tripId);
+  if(!trip) return false;
+  const item = trip.items.find(i=>i.id===itemId);
+  const ex = { ...getItemExtras(trip, item), ...patch };
+  const titles = { ...(trip.dayTitles||{}) };
+  if(!ex.done && !ex.pin) delete titles['x_'+itemId]; else titles['x_'+itemId] = JSON.stringify({ done: !!ex.done, pin: ex.pin || '' });
+  const { error } = await sb.from('trips').update({ day_titles: titles }).eq('id', tripId);
+  if(error){ alert('Could not save: '+error.message); return false; }
+  trip.dayTitles = titles;
+  return true;
+}
+async function toggleItemDone(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  if(!item) return;
+  const done = !getItemExtras(trip, item).done;
+  if(!(await saveItemExtras(tripId, itemId, { done }))) return;
+  render();
+  openItemDetailModal(tripId, itemId);
+  showToast(done ? 'Marked as completed' : 'Marked as not completed');
+}
+async function setItemPinColor(tripId, itemId, color){
+  if(!(await saveItemExtras(tripId, itemId, { pin: color }))) return;
+  render();
+  openItemDetailModal(tripId, itemId);
+}
+function isLightColor(hex){
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex||'');
+  if(!m) return true;
+  const n = parseInt(m[1],16), r=n>>16, g=(n>>8)&255, b=n&255;
+  return (r*299+g*587+b*114)/1000 > 160;
+}
 function makeDayPinEl(glyph, color){
   const el = document.createElement('div');
   el.className = 'map-pin';
-  el.style.background = color;
+  const bg = color || '#ffffff';
+  el.style.background = bg;
+  el.style.color = isLightColor(bg) ? '#333' : '#fff';
+  if(isLightColor(bg)) el.style.borderColor = '#b9b19c';
   el.innerHTML = `<span>${glyph||''}</span>`;
   return el;
 }
@@ -2368,8 +2421,11 @@ async function initTripMap(trip, dayItems, poiItems){
     // down every other pin on the map along with it.
     try {
     let el, extraText;
+    const ex = getItemExtras(trip, item);
     if(isStar){
-      el = makeStarPinEl(explicitIconGlyphHtml(item, 14));
+      el = makeStarPinEl(ex.done ? '✓' : explicitIconGlyphHtml(item, 14));
+      const sc = ex.done ? PIN_DONE_COLOR : ex.pin;
+      if(sc){ el.style.background = sc; el.style.borderColor = sc; el.style.color = isLightColor(sc) ? '#333' : '#fff'; }
       extraText = item.type ? ` · ${item.type}` : '';
     } else {
       const dayNum = dayNumberFor(trip, item);
@@ -2377,8 +2433,10 @@ async function initTripMap(trip, dayItems, poiItems){
       // (customizable there) — only falls back to an automatic color if none was chosen.
       // Day numbering is 0-indexed, so "Day 0" is a real, valid value here — checks below
       // use dayNum==null (not truthiness) so it isn't mistaken for "no day number".
-      const color = item.cardColor || MAP_DAY_COLORS[(dayNum==null?0:dayNum) % MAP_DAY_COLORS.length];
-      const glyph = iconGlyphHtml(item, 16);
+      // Pins are white by default; a completed place turns green with a check, and a color
+      // picked in the place's details window overrides the default.
+      const color = ex.done ? PIN_DONE_COLOR : (ex.pin || '#ffffff');
+      const glyph = ex.done ? '✓' : iconGlyphHtml(item, 16);
       el = makeDayPinEl(glyph, color);
       extraText = dayNum!=null ? ` · Day ${dayNum}` : '';
     }
@@ -3450,13 +3508,14 @@ function renderItemCard(item, trip){
       : `<div class="notes-preview">${linkedNotes}</div>`
   ) : '';
   return `
-    <div class="card item-card" id="item-${item.id}" draggable="true" style="${accent}" onclick="onItemCardClick(event,'${trip.id}','${item.id}')">
+    <div class="card item-card${getItemExtras(trip,item).done?' item-done':''}" id="item-${item.id}" draggable="true" style="${accent}" onclick="onItemCardClick(event,'${trip.id}','${item.id}')">
       <span class="drag-handle" title="Drag to reorder">⠿</span>
       <div class="item-main">
         <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class=\"dup-badge\">Continued</span>':''}</div>
         <div class="item-meta">
           ${item.type? `<span class="type-pill">${escapeHtml(item.type)}</span>` : ''}
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
+          ${getItemExtras(trip,item).done? '<span class="done-pill">✓ Completed</span>' : ''}
           ${item.lat!=null && item.lng!=null? `<span id="cardopenbadge-${item.id}" class="card-openbadge"></span>`:''}
           ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>`:''}
           ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>`:''}
@@ -6053,6 +6112,10 @@ function openItemDetailModal(tripId, itemId){
     ${item.isPoi && trip.startDate ? `<div id="poi-add-wrap" style="margin-top:16px;">
       <button type="button" class="btn btn-primary" style="width:100%;" onclick="showPoiDayPicker('${trip.id}','${item.id}')">🗓️ Add to Itinerary</button>
     </div>` : ''}
+    ${(()=>{ const ex = getItemExtras(trip, item); return `<div class="pin-tools">
+      <button type="button" class="btn" onclick="toggleItemDone('${trip.id}','${item.id}')">${ex.done ? '↩ Mark as not completed' : '✓ Mark as completed'}</button>
+      ${(item.lat!=null && item.lng!=null) ? `<div class="pin-color-row"><span class="pin-color-label">Pin color</span>${PIN_COLORS.map(c=>`<button type="button" class="pin-swatch ${(ex.pin||'')===c?'active':''}" title="${c||'White (default)'}" style="background:${c||'#ffffff'};" onclick="setItemPinColor('${trip.id}','${item.id}','${c}')"></button>`).join('')}</div>` : ''}
+    </div>`; })()}
     <div class="modal-footer">
       <button class="btn" onclick="closeModal();openAddItemModal('${trip.id}','${item.id}')">✏️ Edit</button>
       <button class="btn ${item.isPoi?'':'btn-primary'}" onclick="closeModal()">Close</button>
