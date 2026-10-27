@@ -660,11 +660,12 @@
   .file-pill-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
 
   /* TODAY PAGE */
-  .today-scroll{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 14px;scroll-snap-type:x proximity;}
+  .today-scroll{display:flex;flex-direction:column;gap:12px;padding:4px 2px 14px;}
   .today-card{
-    min-width:190px;max-width:190px;flex-shrink:0;padding:16px;scroll-snap-align:start;
+    display:flex;align-items:center;gap:16px;width:100%;padding:16px 18px;cursor:pointer;
   }
-  .today-card .item-type-badge{margin-bottom:10px;}
+  .today-card .item-type-badge{margin-bottom:0;flex-shrink:0;}
+  .today-card-body{min-width:0;flex:1;}
   .today-card .item-name{white-space:normal;font-size:13.5px;}
   .today-time{font-family:var(--font-serif);font-size:21px;font-weight:600;margin:4px 0 3px;}
 
@@ -5786,7 +5787,8 @@ function renderToday(){
       if(start && start<=t && t<=end) allToday.push({...item, tripName: trip.name, tripId: trip.id});
     });
   });
-  allToday.sort((a,b)=> (a.timeStart||'99:99').localeCompare(b.timeStart||'99:99'));
+  // Timed items in time order; untimed ones follow in the same order as the itinerary list.
+  allToday.sort((a,b)=> (a.timeStart||'99:99').localeCompare(b.timeStart||'99:99') || compareItems(a,b));
   // "upcoming" = ongoing multi-day items already in progress, or items starting today that haven't started yet
   const upcoming = allToday.filter(i => i.dateStart < t || !i.timeStart || i.timeStart >= n);
 
@@ -5820,11 +5822,15 @@ function renderTodayCard(item){
   return `
     <div class="card today-card" style="${past?'opacity:.55;':''}" onclick="openTripDetail('${item.tripId}')">
       <div class="item-type-badge">${iconGlyphHtml(item, 22)}</div>
-      ${ongoing? '<div class="today-time" style="font-size:13px;color:var(--text-muted);">In progress</div>' :
-        item.timeStart? `<div class="today-time">${itemTimeLabel(item)}</div>` : '<div class="today-time" style="font-size:13px;color:var(--text-muted);">All day</div>'}
-      <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
-      <div class="item-meta"><span class="status-badge ${statusClass(item.status)}">${item.status}</span></div>
-      <div class="countdown-sub" style="margin-top:6px;">${escapeHtml(item.tripName)}</div>
+      <div class="today-card-body">
+        <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
+        <div class="item-meta">
+          <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
+          ${ongoing? '<span>In progress</span>' : item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>` : '<span>All day</span>'}
+          ${item.dateEnd && item.dateEnd!==item.dateStart ? `<span>📅 ${itemDateLabel(item)}</span>` : ''}
+        </div>
+        <div class="countdown-sub" style="margin-top:4px;">${escapeHtml(item.tripName)}</div>
+      </div>
     </div>`;
 }
 
