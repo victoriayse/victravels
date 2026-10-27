@@ -2428,7 +2428,7 @@ function showNearbyPanel(pos){
       <div class="item-type-badge" style="flex-shrink:0;">${iconGlyphHtml(item, 16)}</div>
       <div style="flex:1;min-width:0;">
         <div class="item-name" style="white-space:normal;">${escapeHtml(item.name||'Untitled')}</div>
-        <div class="item-meta"><span>${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · ${formatDistance(dist)}</span></div>
+        <div class="item-meta"><span>${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · ${formatDistance(dist)} · 🚶 ~${Math.max(1, Math.round(dist*1.25/80))} min</span></div>
       </div>
       <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate here</a>
     </div>`).join('');
