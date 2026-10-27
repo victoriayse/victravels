@@ -2478,7 +2478,7 @@ function showNearbyPanel(pos){
         <div class="item-name" style="white-space:normal;">${escapeHtml(item.name||'Untitled')}</div>
         <div class="item-meta"><span>${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · ${formatDistance(dist)} · 🚶 ~${Math.max(1, Math.round(dist*1.25/80))} min</span></div>
       </div>
-      <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate here</a>
+      <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Navigate here" aria-label="Navigate here" style="flex-shrink:0;width:38px;height:38px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;line-height:1;">➤</a>
     </div>`).join('');
   panel.innerHTML = head + `<div id="nearby-body" style="margin-top:10px;${nearbyCollapsed?'display:none;':''}">` + (rows ? `<div class="nearby-list">${rows}</div>`
     : `<p class="muted-note" style="margin:0;">No pinned places on this map yet.</p>`) + `</div>`;
