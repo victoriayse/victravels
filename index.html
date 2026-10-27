@@ -766,6 +766,9 @@
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
   #test-banner{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;background:#1f2937;color:#fff;font-size:12.5px;font-weight:600;padding:8px 8px 8px 16px;border-radius:999px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92vw;}
+  #test-banner{white-space:nowrap;font-size:12px;padding:6px 6px 6px 14px;gap:8px;max-width:calc(100vw - 24px);}
+  #test-banner > span{overflow:hidden;text-overflow:ellipsis;}
+  @media (max-width:768px){ #test-banner{bottom:calc(112px + env(safe-area-inset-bottom));} }
   #test-banner button{background:#fff;color:#1f2937;border:none;border-radius:999px;padding:4px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
   .item-type-badge{background:#fff;border:1px solid var(--border);box-shadow:var(--shadow);}
   .pin-tools{margin-top:16px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;}
@@ -6578,7 +6581,7 @@ function renderTestBanner(){
   const parts = [];
   if(testMode.offsetMs) parts.push(fmtDateShort(todayStr())+' '+nowTime());
   if(testMode.loc) parts.push('📍 '+testMode.loc.label);
-  el.innerHTML = `<span onclick="openTestModeModal()" style="cursor:pointer;">🧪 Test mode · ${escapeHtml(parts.join(' · '))}</span><button type="button" onclick="disableTestMode()">Exit</button>`;
+  el.innerHTML = `<span onclick="openTestModeModal()" style="cursor:pointer;">🧪 ${escapeHtml(parts.join(' · '))}</span><button type="button" onclick="disableTestMode()">Exit</button>`;
 }
 
 /* ============ FEATURE 1: LIVE FLIGHT TRACKING & GATE ALERTS ============ */
