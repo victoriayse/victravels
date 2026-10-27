@@ -2114,6 +2114,13 @@ function afterRender(){
   // Loaded on every view, not just Home — EUR-priced items can show a converted-to-SGD
   // cost on tripDetail/poi/trips too, so the rate needs to be available there as well.
   ensureCurrencyRate();
+  if(ui.view==='today'){
+    // Fill in "open now" badges and the Google Maps photo for cards that have no uploaded image.
+    const t = todayStr();
+    const todays = [];
+    data.trips.forEach(tr=>(tr.items||[]).forEach(i=>{ if(!i.isPoi && i.dateStart===t) todays.push(i); }));
+    if(todays.length) loadCardOpenBadges(data.trips[0], todays);
+  }
   if(ui.view==='home'){ renderExpensesChart(); }
   if(ui.view==='finance'){ renderFinanceChart(); }
   if(ui.view==='tripDetail' && lastTripDetailTrip && document.getElementById('trip-map')){
