@@ -2407,7 +2407,8 @@ function showNearbyPanel(pos){
     panel.style.cssText = 'margin-bottom:22px;padding:18px;';
     card.insertAdjacentElement('afterend', panel);
   }
-  const head = `<div class="section-title" style="margin:0 0 10px;">📍 Near me</div>`;
+  const head = `<div class="section-title" style="margin:0;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleNearbyPanel()">
+    <span>📍 Near me</span><span id="nearby-chev" style="font-size:18px;line-height:1;">${nearbyCollapsed?'▸':'▾'}</span></div>`;
   // Based on YOUR pins: every place currently pinned on this map (itinerary + places of interest),
   // nearest first.
   const trip = getTrip(ui.detailTripId) || lastTripDetailTrip;
@@ -2431,8 +2432,15 @@ function showNearbyPanel(pos){
       </div>
       <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate here</a>
     </div>`).join('');
-  panel.innerHTML = head + (rows ? `<div class="nearby-list">${rows}</div>`
-    : `<p class="muted-note" style="margin:0;">No pinned places on this map yet.</p>`);
+  panel.innerHTML = head + `<div id="nearby-body" style="margin-top:10px;${nearbyCollapsed?'display:none;':''}">` + (rows ? `<div class="nearby-list">${rows}</div>`
+    : `<p class="muted-note" style="margin:0;">No pinned places on this map yet.</p>`) + `</div>`;
+}
+let nearbyCollapsed = false;
+function toggleNearbyPanel(){
+  nearbyCollapsed = !nearbyCollapsed;
+  const b = document.getElementById('nearby-body'), c = document.getElementById('nearby-chev');
+  if(b) b.style.display = nearbyCollapsed ? 'none' : '';
+  if(c) c.textContent = nearbyCollapsed ? '▸' : '▾';
 }
 /* ---- Push notifications: 30 / 15 / 5 min before Booked items (server sends them via the send-reminders function) ---- */
 const VAPID_PUBLIC_KEY = 'BK8ZRmOiKvb5aDCIqNNe8OrZUcgn3KvBhaqsIAVKMTgbSYRoHxYivoMSyJLbzbRQDzsYvuoSSQWYL17RxjbS1AM';
