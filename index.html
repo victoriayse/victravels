@@ -2179,31 +2179,23 @@ function computeCountdownInfo(){
     (trip.items||[]).forEach(item=>{
       // Only confirmed plans are worth an "at a glance" countdown — a "To Book" or "Nil"
       // item isn't a real commitment yet, so surfacing it here would be misleading.
-      if(item.isPoi || !item.dateStart || item.status!=='Booked') return;
+      // Only things happening today — nothing on later days.
+      if(item.isPoi || !item.dateStart || item.status!=='Booked' || item.dateStart!==t) return;
       candidates.push({ item, trip });
     });
   });
-  // Prefer the soonest thing that hasn't started yet, within the next 3 days — far-future
-  // items would just be noise in an "at a glance" strip.
+  // The soonest timed item today that hasn't started yet.
   let upcoming = null;
   candidates.forEach(c=>{
-    const dt = new Date(c.item.dateStart+'T'+(c.item.timeStart||'00:00')+':00');
+    if(!c.item.timeStart) return;
+    const dt = new Date(c.item.dateStart+'T'+c.item.timeStart+':00');
     if(isNaN(dt.getTime())) return;
     const diffMs = dt.getTime() - now.getTime();
-    if(diffMs > 0 && diffMs <= 1000*60*60*72 && (!upcoming || diffMs < upcoming.diffMs)){
+    if(diffMs > 0 && (!upcoming || diffMs < upcoming.diffMs)){
       upcoming = { ...c, diffMs, mode:'upcoming' };
     }
   });
-  if(upcoming) return upcoming;
-  // Otherwise, surface whatever's currently in progress (e.g. a multi-night hotel stay) so
-  // there's still a useful "where am I supposed to be" answer even with nothing imminent.
-  let ongoing = null;
-  candidates.forEach(c=>{
-    const { item } = c;
-    const end = item.dateEnd || item.dateStart;
-    if(item.dateStart<=t && t<=end && !ongoing) ongoing = { ...c, mode:'ongoing' };
-  });
-  return ongoing;
+  return upcoming;
 }
 function countdownWhenLabel(diffMs){
   const mins = Math.max(1, Math.round(diffMs/60000));
