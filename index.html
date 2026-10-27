@@ -5984,13 +5984,14 @@ function renderToday(){
   let allToday = [];
   data.trips.forEach(trip=>{
     (trip.items||[]).forEach(item=>{
-      if(item.isDuplicate || item.isPoi) return;
-      const start = item.dateStart, end = item.dateEnd || item.dateStart;
-      if(start && start<=t && t<=end) allToday.push({...item, tripName: trip.name, tripId: trip.id});
+      // Exactly what the trip's day view shows for today: items dated today (a multi-night stay
+      // has its own "Continued" row per day), no Places of Interest.
+      if(item.isPoi) return;
+      if(item.dateStart === t) allToday.push({...item, tripName: trip.name, tripId: trip.id});
     });
   });
-  // Timed items in time order; untimed ones follow in the same order as the itinerary list.
-  allToday.sort((a,b)=> (a.timeStart||'99:99').localeCompare(b.timeStart||'99:99') || compareItems(a,b));
+  // Same order as the itinerary list for that day.
+  allToday.sort(compareItems);
   // "upcoming" = ongoing multi-day items already in progress, or items starting today that haven't started yet
   const upcoming = allToday.filter(i => i.dateStart < t || !i.timeStart || i.timeStart >= n);
 
@@ -6025,11 +6026,12 @@ function renderTodayCard(item){
     <div class="card today-card" style="${past?'opacity:.55;':''}" onclick="openTripDetail('${item.tripId}')">
       <div class="item-type-badge">${iconGlyphHtml(item, 22)}</div>
       <div class="today-card-body">
-        <div class="item-name">${escapeHtml(item.name||'Untitled')}</div>
+        <div class="item-name">${escapeHtml(item.name||'Untitled')}${item.isDuplicate? ' <span class="dup-badge">Continued</span>':''}</div>
         <div class="item-meta">
+          ${item.type? `<span class="type-pill">${escapeHtml(item.type)}</span>` : ''}
           <span class="status-badge ${statusClass(item.status)}">${item.status}</span>
-          ${ongoing? '<span>In progress</span>' : item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>` : '<span>All day</span>'}
-          ${item.dateEnd && item.dateEnd!==item.dateStart ? `<span>📅 ${itemDateLabel(item)}</span>` : ''}
+          ${item.dateStart? `<span>📅 ${itemDateLabel(item)}</span>` : ''}
+          ${item.timeStart? `<span>⏰ ${itemTimeLabel(item)}</span>` : ''}
         </div>
         <div class="countdown-sub" style="margin-top:4px;">${escapeHtml(item.tripName)}</div>
       </div>
