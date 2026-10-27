@@ -744,6 +744,7 @@
   .card-openbadge:empty{display:none;}
   #test-banner{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;background:#1f2937;color:#fff;font-size:12.5px;font-weight:600;padding:8px 8px 8px 16px;border-radius:999px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92vw;}
   #test-banner button{background:#fff;color:#1f2937;border:none;border-radius:999px;padding:4px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
+  .item-type-badge{background:#fff;border:1px solid var(--border);box-shadow:var(--shadow);}
   .pin-tools{margin-top:16px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;}
   .pin-color-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .pin-color-label{font-size:13px;font-weight:600;color:var(--text-muted);margin-right:4px;}
@@ -2355,11 +2356,106 @@ async function locateMeOnTripMap(map, googleMaps, btnEl){
     });
     map.panTo(pos);
     if(map.getZoom() < 14) map.setZoom(15);
+    showNearbyPanel(pos);
   } catch(err){
     alert(err.message);
   } finally {
     if(btnEl){ btnEl.disabled = false; btnEl.innerHTML = '🎯'; }
   }
+}
+/* ---- "Near me" list shown under the map after pressing the locate button (free OpenStreetMap data) ---- */
+const NEARBY_CATS = [
+  [/^cafe$/, '☕', 'Cafe'], [/^(restaurant)$/, '🍽️', 'Restaurant'], [/^fast_food$/, '🍔', 'Fast food'],
+  [/^bar$|^pub$/, '🍺', 'Bar'], [/^pharmacy$/, '💊', 'Pharmacy'], [/^atm$/, '🏧', 'ATM'],
+  [/^toilets$/, '🚻', 'Toilets'], [/^supermarket$/, '🛒', 'Supermarket'], [/^convenience$/, '🏪', 'Convenience store'],
+  [/^bakery$/, '🥐', 'Bakery'],
+];
+function nearbyCategory(tags){
+  const vals = [tags.amenity, tags.shop].filter(Boolean);
+  for(const v of vals){ for(const c of NEARBY_CATS){ if(c[0].test(v)) return { icon:c[1], label:c[2] }; } }
+  return null;
+}
+async function queryNearbyPlaces(pos, radius){
+  const q = `[out:json][timeout:20];(nwr["amenity"~"^(cafe|restaurant|fast_food|bar|pub|pharmacy|atm|toilets)$"](around:${radius},${pos.lat},${pos.lng});nwr["shop"~"^(supermarket|convenience|bakery)$"](around:${radius},${pos.lat},${pos.lng}););out center tags 150;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method:'POST', body:'data='+encodeURIComponent(q),
+    headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+  });
+  if(!res.ok) throw new Error('Overpass error');
+  const json = await res.json();
+  return (json.elements||[]).map(el=>{
+    const lat = el.lat ?? (el.center && el.center.lat), lng = el.lon ?? (el.center && el.center.lon);
+    const cat = nearbyCategory(el.tags||{});
+    if(lat==null || lng==null || !cat) return null;
+    return { lat, lng, cat, name:(el.tags&&el.tags.name)||'', dist: haversineMeters(pos.lat,pos.lng,lat,lng) };
+  }).filter(Boolean).sort((a,b)=>a.dist-b.dist);
+}
+async function showNearbyPanel(pos){
+  const card = document.getElementById('map-card');
+  if(!card) return;
+  let panel = document.getElementById('nearby-places-panel');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'nearby-places-panel';
+    panel.className = 'card';
+    panel.style.cssText = 'margin-bottom:22px;padding:18px;';
+    card.insertAdjacentElement('afterend', panel);
+  }
+  const head = `<div class="section-title" style="margin:0 0 10px;">📍 Near me</div>`;
+  panel.innerHTML = head + `<p class="muted-note" style="margin:0;">Looking for places around you…</p>`;
+  try{
+    const all = await queryNearbyPlaces(pos, 600);
+    // Show the closest few of each kind so one type (e.g. restaurants) doesn't crowd out the rest.
+    const seen = {}; const list = [];
+    all.forEach(p=>{ seen[p.cat.label] = (seen[p.cat.label]||0)+1; if(seen[p.cat.label]<=2) list.push(p); });
+    list.sort((a,b)=>a.dist-b.dist);
+    const rows = list.slice(0,14).map(p=>`
+      <div class="nearby-row">
+        <div class="item-type-badge" style="flex-shrink:0;">${p.cat.icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="item-name" style="white-space:normal;">${escapeHtml(p.cat.label)} · ${formatDistance(p.dist)}</div>
+          ${p.name ? `<div class="item-meta"><span>${escapeHtml(p.name)}</span></div>` : ''}
+        </div>
+        <a class="nav-btn" href="${googleMapsDirectionsUrl(p.lat,p.lng)}" target="_blank" rel="noopener">🧭 Navigate here</a>
+      </div>`).join('');
+    panel.innerHTML = head + (rows ? `<div class="nearby-list">${rows}</div><p class="muted-note" style="margin:10px 0 0;">From OpenStreetMap, within 600 m. Coverage varies.</p>`
+      : `<p class="muted-note" style="margin:0;">Nothing found within 600 m on OpenStreetMap.</p>`);
+  }catch(err){
+    panel.innerHTML = head + `<p class="muted-note" style="margin:0;">Couldn't load nearby places right now (${escapeHtml(err.message)}). Try the 🎯 button again in a moment.</p>`;
+  }
+}
+/* ---- iPhone reminders: a calendar (.ics) file whose events alert 30, 15 and 5 minutes before ---- */
+function icsEscape(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function icsStamp(dateStr, timeStr){ return dateStr.replace(/-/g,'') + 'T' + timeStr.replace(':','') + '00'; }
+function exportBookedReminders(tripId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const items = (trip.items||[]).filter(i=>i.status==='Booked' && !i.isPoi && !i.isDuplicate && i.dateStart && i.timeStart);
+  const skipped = (trip.items||[]).filter(i=>i.status==='Booked' && !i.isPoi && !i.isDuplicate && (!i.dateStart || !i.timeStart)).length;
+  if(!items.length){ alert('No Booked items with a start time yet. Add a time to your booked items and try again.'); return; }
+  const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//VicTravels//Reminders//EN','CALSCALE:GREGORIAN'];
+  items.forEach(i=>{
+    const endDate = (i.timeEnd && (!i.dateEnd || i.dateEnd===i.dateStart)) ? i.dateStart : null;
+    const dtEnd = endDate && i.timeEnd > i.timeStart ? icsStamp(i.dateStart, i.timeEnd) : icsStamp(i.dateStart, i.timeStart);
+    lines.push('BEGIN:VEVENT',
+      `UID:${i.id}@victravels`,
+      'DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,''),
+      `DTSTART:${icsStamp(i.dateStart, i.timeStart)}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${icsEscape(i.name||'Booked')}`,
+      i.mapsLink ? `URL:${i.mapsLink}` : '',
+      `DESCRIPTION:${icsEscape(trip.name+' · '+i.type)}`);
+    [30,15,5].forEach(m=>lines.push('BEGIN:VALARM','ACTION:DISPLAY',`DESCRIPTION:${icsEscape((i.name||'Booking')+' in '+m+' min')}`,`TRIGGER:-PT${m}M`,'END:VALARM'));
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.filter(Boolean).join('\r\n')], { type:'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = (trip.name||'trip').replace(/[^a-z0-9]+/gi,'_') + '_reminders.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  showToast(`${items.length} reminder${items.length===1?'':'s'} ready${skipped?` · ${skipped} skipped (no time)`:''}`);
 }
 // Toggles the map card between its normal inline size and a near-fullscreen overlay. The
 // map container itself isn't recreated — Google Maps just needs a nudge (the 'resize' event)
@@ -3124,6 +3220,7 @@ function renderTripDetail(){
         <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">Trip Expenses</button>
         <button class="btn btn-sm" onclick="ui.detailTripId='${trip.id}';ui.view='finance';render();">Finance</button>
         <button class="btn btn-sm" onclick="openShoppingList('${trip.id}')">Shopping List</button>
+        <button class="btn btn-sm" onclick="exportBookedReminders('${trip.id}')">🔔 Reminders</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
     </div>
