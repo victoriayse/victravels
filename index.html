@@ -2396,7 +2396,7 @@ async function queryNearbyPlaces(pos, radius){
     return { lat, lng, cat, name:(el.tags&&el.tags.name)||'', dist: haversineMeters(pos.lat,pos.lng,lat,lng) };
   }).filter(Boolean).sort((a,b)=>a.dist-b.dist);
 }
-async function showNearbyPanel(pos){
+function showNearbyPanel(pos){
   const card = document.getElementById('map-card');
   if(!card) return;
   let panel = document.getElementById('nearby-places-panel');
@@ -2408,27 +2408,27 @@ async function showNearbyPanel(pos){
     card.insertAdjacentElement('afterend', panel);
   }
   const head = `<div class="section-title" style="margin:0 0 10px;">📍 Near me</div>`;
-  panel.innerHTML = head + `<p class="muted-note" style="margin:0;">Looking for places around you…</p>`;
-  try{
-    const all = await queryNearbyPlaces(pos, 600);
-    // Show the closest few of each kind so one type (e.g. restaurants) doesn't crowd out the rest.
-    const seen = {}; const list = [];
-    all.forEach(p=>{ seen[p.cat.label] = (seen[p.cat.label]||0)+1; if(seen[p.cat.label]<=2) list.push(p); });
-    list.sort((a,b)=>a.dist-b.dist);
-    const rows = list.slice(0,14).map(p=>`
-      <div class="nearby-row">
-        <div class="item-type-badge" style="flex-shrink:0;">${p.cat.icon}</div>
-        <div style="flex:1;min-width:0;">
-          <div class="item-name" style="white-space:normal;">${escapeHtml(p.cat.label)} · ${formatDistance(p.dist)}</div>
-          ${p.name ? `<div class="item-meta"><span>${escapeHtml(p.name)}</span></div>` : ''}
-        </div>
-        <a class="nav-btn" href="${googleMapsDirectionsUrl(p.lat,p.lng)}" target="_blank" rel="noopener">🧭 Navigate here</a>
-      </div>`).join('');
-    panel.innerHTML = head + (rows ? `<div class="nearby-list">${rows}</div><p class="muted-note" style="margin:10px 0 0;">From OpenStreetMap, within 600 m. Coverage varies.</p>`
-      : `<p class="muted-note" style="margin:0;">Nothing found within 600 m on OpenStreetMap.</p>`);
-  }catch(err){
-    panel.innerHTML = head + `<p class="muted-note" style="margin:0;">Couldn't load nearby places right now (${escapeHtml(err.message)}). Try the 🎯 button again in a moment.</p>`;
-  }
+  // Based on YOUR pins: every place currently pinned on this map (itinerary + places of interest),
+  // nearest first.
+  const trip = getTrip(ui.detailTripId) || lastTripDetailTrip;
+  const list = [];
+  Object.keys(tripMapPins).forEach(id=>{
+    const item = trip && (trip.items||[]).find(i=>i.id===id);
+    if(!item || item.lat==null || item.lng==null) return;
+    list.push({ item, dist: haversineMeters(pos.lat, pos.lng, item.lat, item.lng) });
+  });
+  list.sort((a,b)=>a.dist-b.dist);
+  const rows = list.slice(0,15).map(({item, dist})=>`
+    <div class="nearby-row" style="cursor:pointer;" onclick="openItemDetailModal('${trip.id}','${item.id}')">
+      <div class="item-type-badge" style="flex-shrink:0;">${iconGlyphHtml(item, 16)}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="item-name" style="white-space:normal;">${escapeHtml(item.type||'Place')} · ${formatDistance(dist)}</div>
+        <div class="item-meta"><span>${escapeHtml(item.name||'Untitled')}${item.isPoi?' · ⭐ Place of Interest':''}</span></div>
+      </div>
+      <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate here</a>
+    </div>`).join('');
+  panel.innerHTML = head + (rows ? `<div class="nearby-list">${rows}</div>`
+    : `<p class="muted-note" style="margin:0;">No pinned places on this map yet.</p>`);
 }
 /* ---- Push notifications: 30 / 15 / 5 min before Booked items (server sends them via the send-reminders function) ---- */
 const VAPID_PUBLIC_KEY = 'BK8ZRmOiKvb5aDCIqNNe8OrZUcgn3KvBhaqsIAVKMTgbSYRoHxYivoMSyJLbzbRQDzsYvuoSSQWYL17RxjbS1AM';
