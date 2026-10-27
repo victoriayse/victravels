@@ -2476,7 +2476,7 @@ function showNearbyPanel(pos){
       <div class="item-type-badge" style="flex-shrink:0;">${iconGlyphHtml(item, 16)}</div>
       <div style="flex:1;min-width:0;">
         <div class="item-name" style="white-space:normal;">${escapeHtml(item.name||'Untitled')}</div>
-        <div class="item-meta"><span style="white-space:normal;">${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · ${formatDistance(dist)} · 🚶 ~${Math.max(1, Math.round(dist*1.25/80))} min</span></div>
+        <div class="item-meta"><span style="white-space:normal;">${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · <span style="white-space:nowrap;">${formatDistance(dist)}</span> · <span style="white-space:nowrap;">🚶 ~${Math.max(1, Math.round(dist*1.25/80))} min</span></span></div>
       </div>
       <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Navigate here" aria-label="Navigate here" style="flex-shrink:0;width:22px;height:22px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;line-height:1;margin-left:2px;">➤</a>
     </div>`).join('');
