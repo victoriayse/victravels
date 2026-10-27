@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VicTravels</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VicTravels">
+<meta name="theme-color" content="#4f5bd5">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2424,7 +2430,94 @@ async function showNearbyPanel(pos){
     panel.innerHTML = head + `<p class="muted-note" style="margin:0;">Couldn't load nearby places right now (${escapeHtml(err.message)}). Try the 🎯 button again in a moment.</p>`;
   }
 }
-/* ---- iPhone reminders: a calendar (.ics) file whose events alert 30, 15 and 5 minutes before ---- */
+/* ---- Push notifications: 30 / 15 / 5 min before Booked items (server sends them via the send-reminders function) ---- */
+const VAPID_PUBLIC_KEY = 'BK8ZRmOiKvb5aDCIqNNe8OrZUcgn3KvBhaqsIAVKMTgbSYRoHxYivoMSyJLbzbRQDzsYvuoSSQWYL17RxjbS1AM';
+const PUSH_TZ_KEY = 'victravels_push_tz';
+const PUSH_TZS = ['Europe/Amsterdam','Europe/Paris','Europe/Brussels','Europe/Berlin','Europe/London','Asia/Singapore'];
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+function urlB64ToUint8(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));
+}
+function pushIsStandalone(){ return (window.navigator.standalone === true) || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); }
+function pushIsIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+async function pushGetSub(){
+  if(!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return reg ? await reg.pushManager.getSubscription() : null;
+}
+async function openPushModal(){
+  const supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+  const sub = supported ? await pushGetSub() : null;
+  const tz = localStorage.getItem(PUSH_TZ_KEY) || PUSH_TZS[0];
+  let body;
+  if(pushIsIOS() && !pushIsStandalone()){
+    body = `<p class="muted-note" style="display:block;margin:0 0 12px;">On iPhone, notifications only work once VicTravels is on your Home Screen:</p>
+      <ol style="padding-left:20px;line-height:1.7;font-size:14px;margin:0;">
+        <li>Open this page in <b>Safari</b></li>
+        <li>Tap the <b>Share</b> button, then <b>Add to Home Screen</b></li>
+        <li>Open <b>VicTravels from the Home Screen icon</b>, come back to this 🔔 button and enable</li>
+      </ol>`;
+  } else if(!supported){
+    body = `<p class="muted-note" style="display:block;margin:0;">This browser doesn't support push notifications.</p>`;
+  } else {
+    body = `<p class="muted-note" style="display:block;margin:0 0 12px;">Get a push notification <b>30, 15 and 5 minutes</b> before every <b>Booked</b> item that has a start time.</p>
+      <div class="field"><label class="field-label">Time zone of your booking times</label>
+        <select id="push-tz">${PUSH_TZS.map(z=>`<option value="${z}" ${z===tz?'selected':''}>${z.replace('_',' ')}</option>`).join('')}</select>
+        <span class="muted-note">Times on your cards are treated as local time in this zone.</span></div>
+      <p id="push-status" style="font-weight:600;margin:10px 0 0;">${sub ? '✅ Notifications are on for this device.' : 'Notifications are off for this device.'}</p>`;
+  }
+  const canAct = supported && !(pushIsIOS() && !pushIsStandalone());
+  openModal(`
+    <div class="modal-header"><h3>🔔 Booking reminders</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    ${body}
+    <div class="modal-footer">
+      ${canAct && sub ? `<button class="btn" onclick="pushTest()">Send test</button><button class="btn" onclick="pushDisable()">Turn off</button>` : ''}
+      ${canAct ? `<button class="btn btn-primary" onclick="pushEnable()">${sub?'Update':'Enable notifications'}</button>` : `<button class="btn btn-primary" onclick="closeModal()">Got it</button>`}
+    </div>`);
+}
+async function pushEnable(){
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm !== 'granted'){ alert('Notifications were blocked. Allow them for VicTravels in your device settings, then try again.'); return; }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+    const j = sub.toJSON();
+    const tz = document.getElementById('push-tz').value;
+    localStorage.setItem(PUSH_TZ_KEY, tz);
+    const { error } = await sb.from('push_subscriptions').upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, tz }, { onConflict:'endpoint' });
+    if(error){ alert('Could not save subscription: '+error.message); return; }
+    showToast('Notifications on');
+    openPushModal();
+  }catch(e){ alert('Could not enable notifications: '+e.message); }
+}
+async function pushDisable(){
+  try{
+    const sub = await pushGetSub();
+    if(sub) await sub.unsubscribe();
+    showToast('Notifications off');
+    openPushModal();
+  }catch(e){ alert(e.message); }
+}
+async function pushTest(){
+  const sub = await pushGetSub();
+  if(!sub){ alert('Enable notifications first.'); return; }
+  try{
+    const res = await fetch(SUPABASE_URL + '/functions/v1/send-reminders', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY, 'x-vt-pass':PASS_HASH },
+      body: JSON.stringify({ test:true, endpoint: sub.endpoint }),
+    });
+    const j = await res.json();
+    if(!res.ok || !j.sent) alert('Test failed: '+(j.error || 'server could not deliver'));
+    else showToast('Test sent — it should arrive in a few seconds');
+  }catch(e){ alert('Test failed: '+e.message); }
+}
+/* ---- (unused) calendar file export ---- */
 function icsEscape(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
 function icsStamp(dateStr, timeStr){ return dateStr.replace(/-/g,'') + 'T' + timeStr.replace(':','') + '00'; }
 function exportBookedReminders(tripId){
@@ -3220,7 +3313,7 @@ function renderTripDetail(){
         <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">Trip Expenses</button>
         <button class="btn btn-sm" onclick="ui.detailTripId='${trip.id}';ui.view='finance';render();">Finance</button>
         <button class="btn btn-sm" onclick="openShoppingList('${trip.id}')">Shopping List</button>
-        <button class="btn btn-sm" onclick="exportBookedReminders('${trip.id}')">🔔 Reminders</button>
+        <button class="btn btn-sm" onclick="openPushModal()">🔔 Reminders</button>
         <button class="btn btn-sm" onclick="openAddTripModal('${trip.id}')">Edit Trip</button>
       </div>
     </div>
