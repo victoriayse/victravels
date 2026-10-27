@@ -741,6 +741,8 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  #test-banner{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;background:#1f2937;color:#fff;font-size:12.5px;font-weight:600;padding:8px 8px 8px 16px;border-radius:999px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92vw;}
+  #test-banner button{background:#fff;color:#1f2937;border:none;border-radius:999px;padding:4px 12px;font-weight:700;font-size:12px;cursor:pointer;font-family:inherit;}
   .pin-tools{margin-top:16px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;}
   .pin-color-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .pin-color-label{font-size:13px;font-weight:600;color:var(--text-muted);margin-right:4px;}
@@ -1125,11 +1127,17 @@ function escapeHtml(s){
   if(s==null) return '';
   return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+/* ---- Test mode: pretend it's another date/time and that you're somewhere else (this browser only) ---- */
+const TEST_KEY = 'victravels_testmode';
+function testLoad(){ try{ return JSON.parse(localStorage.getItem(TEST_KEY)||'null'); }catch(e){ return null; } }
+let testMode = testLoad(); // { offsetMs, loc:{lat,lng,label}|null } or null
+// The app's "now": real time, or shifted time (still ticking) when test mode has a date set.
+function appNow(){ return new Date(Date.now() + ((testMode && testMode.offsetMs) || 0)); }
 function todayStr(){
-  const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const d=appNow(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function nowTime(){
-  const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const d=appNow(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
 // Defaults the Trip Expenses "Day" field to today if today falls inside the trip, otherwise
 // the trip's start date — so logging a coffee mid-trip doesn't need any date fiddling.
@@ -1555,6 +1563,7 @@ async function geocodePlace(query){
    built-in Geolocation API for "where am I", which also costs nothing and needs no key —
    just a one-time permission prompt (requires HTTPS, which GitHub Pages already is). */
 function getCurrentPosition(){
+  if(testMode && testMode.loc) return Promise.resolve({ lat: testMode.loc.lat, lng: testMode.loc.lng });
   return new Promise((resolve, reject)=>{
     if(!navigator.geolocation){ reject(new Error('Geolocation is not supported on this device/browser.')); return; }
     navigator.geolocation.getCurrentPosition(
@@ -2055,6 +2064,7 @@ function render(){
   else if(ui.view==='today') app.innerHTML = renderToday();
   afterRender();
   navSync();
+  renderTestBanner();
 }
 
 /* ---- Browser Back button: each page change is a history entry; open popups close on Back ---- */
@@ -2136,7 +2146,7 @@ window.addEventListener('resize', ()=>{ if(ui.view==='tripDetail') syncDayNavSti
 /* ---- "What's next" countdown strip (lives in the header, outside #app, so it's visible
    on every page without needing to open anything) ---- */
 function computeCountdownInfo(){
-  const now = new Date();
+  const now = appNow();
   const t = todayStr();
   const n = nowTime();
   let candidates = [];
@@ -3609,7 +3619,7 @@ document.addEventListener('click', async function(e){
   const pop = document.createElement('div');
   pop.className = 'popover hours-pop';
   pop.dataset.for = badge.dataset.place;
-  const todayIdx = (new Date().getDay()+6)%7; // Google lists Monday first
+  const todayIdx = (appNow().getDay()+6)%7; // Google lists Monday first
   pop.innerHTML = (details && details.hours && details.hours.length)
     ? details.hours.map((h,i)=>`<div class="hours-row${i===todayIdx?' today':''}">${escapeHtml(h)}</div>`).join('')
     : `<div class="hours-row">Opening hours not available</div>`;
@@ -6205,7 +6215,98 @@ function renderToolsSection(){
     <div class="home-grid">
       ${taxToolCardHtml()}
       ${jetLagToolCardHtml()}
+      ${testModeToolCardHtml()}
     </div>`;
+}
+
+/* ---- Test mode UI ---- */
+const TEST_PRESETS = [
+  ['Amsterdam', 52.3676, 4.9041], ['Paris', 48.8566, 2.3522], ['Strasbourg', 48.5734, 7.7521],
+  ['Colmar', 48.0794, 7.3585], ['Brussels', 50.8503, 4.3517], ['Singapore', 1.3521, 103.8198],
+];
+function testModeToolCardHtml(){
+  return `<div class="card tool-card" role="button" tabindex="0" onclick="openTestModeModal()">
+        <span class="flight-icon">🧪</span>
+        <div style="flex:1;min-width:0;">
+          <div class="flight-name">Test Mode${testMode?' · ON':''}</div>
+          <div class="flight-meta">Pretend it's another date and that you're in another city</div>
+        </div>
+        <span class="tool-chev">›</span>
+      </div>`;
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+function openTestModeModal(){
+  const real = new Date();
+  const cur = appNow();
+  const dVal = cur.getFullYear()+'-'+pad2(cur.getMonth()+1)+'-'+pad2(cur.getDate());
+  const tVal = pad2(cur.getHours())+':'+pad2(cur.getMinutes());
+  const loc = testMode && testMode.loc;
+  const placeOpts = [];
+  data.trips.forEach(tr=>(tr.items||[]).forEach(i=>{
+    if(i.lat!=null && i.lng!=null) placeOpts.push(`<option value="${i.lat},${i.lng}|${escapeHtml(i.name||'place')}">${escapeHtml(i.name||'Untitled')}</option>`);
+  }));
+  openModal(`
+    <div class="modal-header"><h3>🧪 Test Mode</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="display:block;margin-bottom:14px;">Only affects this browser. Pretend it's a different date/time (so Today and the countdown change) and that you're in a different place (so the map's "my location", Nearby and Nearest Toilet use it).</p>
+    <div class="field"><label class="field-label">Date &amp; time</label>
+      <div style="display:flex;gap:8px;"><input type="date" id="tm-date" value="${dVal}"><input type="time" id="tm-time" value="${tVal}"></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px;margin-top:8px;"><input type="checkbox" id="tm-usedate" ${testMode&&testMode.offsetMs?'checked':''}> Use this date/time</label>
+    </div>
+    <div class="field"><label class="field-label">Current location</label>
+      <select id="tm-loc">
+        <option value="">Real location</option>
+        <optgroup label="Cities">${TEST_PRESETS.map(p=>`<option value="${p[1]},${p[2]}|${p[0]}" ${loc&&loc.label===p[0]?'selected':''}>${p[0]}</option>`).join('')}</optgroup>
+        ${placeOpts.length?`<optgroup label="One of my places">${placeOpts.join('')}</optgroup>`:''}
+        <option value="custom" ${loc&&loc.label==='Custom'?'selected':''}>Custom (lat, lng)…</option>
+      </select>
+      <input type="text" id="tm-custom" placeholder="e.g. 48.5846, 7.7507" value="${loc&&loc.label==='Custom'?loc.lat+', '+loc.lng:''}" style="margin-top:8px;">
+    </div>
+    <div class="modal-footer">
+      ${testMode?`<button class="btn" onclick="disableTestMode()">Turn off</button>`:`<button class="btn" onclick="closeModal()">Cancel</button>`}
+      <button class="btn btn-primary" onclick="applyTestMode()">${testMode?'Update':'Turn on'}</button>
+    </div>`);
+}
+function applyTestMode(){
+  const useDate = document.getElementById('tm-usedate').checked;
+  const d = document.getElementById('tm-date').value, t = document.getElementById('tm-time').value || '12:00';
+  let offsetMs = 0;
+  if(useDate && d){
+    const target = new Date(d+'T'+t+':00');
+    if(!isNaN(target)) offsetMs = target.getTime() - Date.now();
+  }
+  let loc = null;
+  const sel = document.getElementById('tm-loc').value;
+  if(sel === 'custom'){
+    const m = (document.getElementById('tm-custom').value||'').match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+    if(!m){ alert('Enter custom location as "lat, lng", e.g. 48.5846, 7.7507'); return; }
+    loc = { lat: parseFloat(m[1]), lng: parseFloat(m[2]), label: 'Custom' };
+  } else if(sel){
+    const [coords, label] = sel.split('|'); const [la, ln] = coords.split(',');
+    loc = { lat: parseFloat(la), lng: parseFloat(ln), label };
+  }
+  if(!offsetMs && !loc){ disableTestMode(); return; }
+  testMode = { offsetMs, loc };
+  try{ localStorage.setItem(TEST_KEY, JSON.stringify(testMode)); }catch(e){}
+  closeModal();
+  render();
+  showToast('Test mode on');
+}
+function disableTestMode(){
+  testMode = null;
+  try{ localStorage.removeItem(TEST_KEY); }catch(e){}
+  closeModal();
+  render();
+  showToast('Test mode off');
+}
+function renderTestBanner(){
+  let el = document.getElementById('test-banner');
+  if(!testMode){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement('div'); el.id = 'test-banner'; document.body.appendChild(el); }
+  const n = appNow();
+  const parts = [];
+  if(testMode.offsetMs) parts.push(fmtDateShort(todayStr())+' '+nowTime());
+  if(testMode.loc) parts.push('📍 '+testMode.loc.label);
+  el.innerHTML = `<span onclick="openTestModeModal()" style="cursor:pointer;">🧪 Test mode · ${escapeHtml(parts.join(' · '))}</span><button type="button" onclick="disableTestMode()">Exit</button>`;
 }
 
 /* ============ FEATURE 1: LIVE FLIGHT TRACKING & GATE ALERTS ============ */
