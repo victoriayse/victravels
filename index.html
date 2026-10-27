@@ -2175,6 +2175,25 @@ function computeCountdownInfo(){
   const now = appNow();
   const t = todayStr();
   const n = nowTime();
+  // On a train/flight right now? Then show "Arriving <destination> in Xm" until it ends.
+  let arriving = null;
+  const yday = addDays(t, -1);
+  data.trips.forEach(trip=>{
+    (trip.items||[]).forEach(item=>{
+      if(item.isPoi || item.status!=='Booked' || !item.timeStart || !item.timeEnd) return;
+      if(item.type!=='Transport' && item.type!=='Flight') return;
+      if(item.dateStart!==t && item.dateStart!==yday) return;
+      const s = new Date(item.dateStart+'T'+item.timeStart+':00');
+      let e = new Date(item.dateStart+'T'+item.timeEnd+':00');
+      if(isNaN(s)||isNaN(e)) return;
+      if(e <= s) e = new Date(e.getTime()+86400000); // arrives after midnight
+      if(s <= now && now < e){
+        const diffMs = e.getTime() - now.getTime();
+        if(!arriving || diffMs < arriving.diffMs) arriving = { item, trip, diffMs, mode:'arriving' };
+      }
+    });
+  });
+  if(arriving) return arriving;
   let candidates = [];
   data.trips.forEach(trip=>{
     (trip.items||[]).forEach(item=>{
@@ -2213,8 +2232,14 @@ function renderCountdownStrip(){
   const whenHtml = mode==='ongoing'
     ? `<span class="countdown-strip-when">Now</span>`
     : `<span class="countdown-strip-when">${countdownWhenLabel(diffMs)}</span>`;
+  let label = item.name||'Untitled';
+  if(mode==='arriving'){
+    // "Train from Strasbourg to Paris" -> destination "Paris"
+    const m = (item.name||'').match(/(?:\bto\b|→|->)\s*([^()]+?)\s*(?:\(.*\))?$/i);
+    label = m && m[1] ? `Arriving ${m[1].trim()}` : `Arriving · ${item.name||''}`;
+  }
   el.classList.remove('hidden');
-  el.innerHTML = `<span class="countdown-strip-pill"><span class="countdown-strip-icon">${iconGlyphHtml(item,14)}</span><span class="countdown-strip-text">${escapeHtml(item.name||'Untitled')}</span> ${whenHtml}</span>`;
+  el.innerHTML = `<span class="countdown-strip-pill"><span class="countdown-strip-icon">${iconGlyphHtml(item,14)}</span><span class="countdown-strip-text">${escapeHtml(label)}</span> ${whenHtml}</span>`;
   el.onclick = ()=> openItemDetailModal(trip.id, item.id);
 }
 let countdownStripTimer = setInterval(renderCountdownStrip, 60000);
