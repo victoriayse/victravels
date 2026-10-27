@@ -753,6 +753,8 @@
     display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(10,15,14,0.35);
   }
   .map-card.map-maximized #trip-map{flex:1;height:auto !important;}
+  /* popups (pin details etc.) must appear above the expanded map */
+  .modal-overlay{z-index:200;}
   body.map-maximized-open{overflow:hidden;}
   .card-distance-badge{
     position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;
