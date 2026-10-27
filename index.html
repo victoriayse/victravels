@@ -2412,9 +2412,13 @@ function showNearbyPanel(pos){
   // nearest first.
   const trip = getTrip(ui.detailTripId) || lastTripDetailTrip;
   const list = [];
+  const seenPlaces = new Set(); // one row per real place (multi-day stays have a pin per night)
   Object.keys(tripMapPins).forEach(id=>{
     const item = trip && (trip.items||[]).find(i=>i.id===id);
     if(!item || item.lat==null || item.lng==null) return;
+    const key = item.placeId || ((item.name||'').trim().toLowerCase() + '|' + item.lat.toFixed(4) + ',' + item.lng.toFixed(4));
+    if(seenPlaces.has(key)) return;
+    seenPlaces.add(key);
     list.push({ item, dist: haversineMeters(pos.lat, pos.lng, item.lat, item.lng) });
   });
   list.sort((a,b)=>a.dist-b.dist);
@@ -2422,8 +2426,8 @@ function showNearbyPanel(pos){
     <div class="nearby-row" style="cursor:pointer;" onclick="openItemDetailModal('${trip.id}','${item.id}')">
       <div class="item-type-badge" style="flex-shrink:0;">${iconGlyphHtml(item, 16)}</div>
       <div style="flex:1;min-width:0;">
-        <div class="item-name" style="white-space:normal;">${escapeHtml(item.type||'Place')} · ${formatDistance(dist)}</div>
-        <div class="item-meta"><span>${escapeHtml(item.name||'Untitled')}${item.isPoi?' · ⭐ Place of Interest':''}</span></div>
+        <div class="item-name" style="white-space:normal;">${escapeHtml(item.name||'Untitled')}</div>
+        <div class="item-meta"><span>${escapeHtml(item.type||'Place')}${item.isPoi?' · ⭐ Place of Interest':''} · ${formatDistance(dist)}</span></div>
       </div>
       <a class="nav-btn" href="${googleMapsDirectionsUrl(item.lat,item.lng)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🧭 Navigate here</a>
     </div>`).join('');
