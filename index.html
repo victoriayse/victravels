@@ -3995,7 +3995,9 @@ async function duplicateItem(tripId, itemId){
     trip_id: tripId, type: item.type, icon: item.icon || null, icon_image_path: item.iconImagePath || null, status: item.status,
     booked_by: item.bookedBy || null, name: item.name,
     cost_total: item.costTotal || 0, cost_per_pax: item.costPerPax || 0, currency: item.currency || 'SGD',
-    date_start: item.dateStart || null, date_end: item.dateEnd || null,
+    // A duplicate is always a single-day card on the same day (e.g. "Check in" + "Return to
+    // hotel"). Copying a multi-night date range would spawn extra "Continued" cards.
+    date_start: item.dateStart || null, date_end: item.dateStart || null,
     time_start: item.timeStart || null, time_end: item.timeEnd || null,
     link: item.link || null, maps_link: item.mapsLink || null,
     card_color: item.cardColor || null, notes: item.notes || '', sort_order: newOrder,
