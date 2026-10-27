@@ -668,7 +668,7 @@
   /* TODAY PAGE */
   .today-scroll{display:flex;flex-direction:column;gap:16px;padding:4px 2px 14px;}
   .today-item .item-card{
-    margin:0;
+    margin:0 0 14px;
     background:linear-gradient(135deg,#ffffff 0%,#f3f1ff 100%);
     border:1px solid rgba(99,102,241,.20);
     border-left:5px solid #6366f1;
@@ -2120,6 +2120,7 @@ function afterRender(){
     const todays = [];
     data.trips.forEach(tr=>(tr.items||[]).forEach(i=>{ if(!i.isPoi && i.dateStart===t) todays.push(i); }));
     if(todays.length) loadCardOpenBadges(data.trips[0], todays);
+    (async ()=>{ for(const g of todayLists){ await loadDistanceBadges(g.trip, g.items); } })();
   }
   if(ui.view==='home'){ renderExpensesChart(); }
   if(ui.view==='finance'){ renderFinanceChart(); }
@@ -6021,18 +6022,29 @@ function renderToday(){
     ` : `
       <div class="section-title">${ui.todayShowAll? "Today's full itinerary" : "Coming up"}</div>
       <div class="today-scroll">
-        ${list.map(i=>renderTodayCard(i)).join('')}
+        ${renderTodayList(list)}
       </div>
     `}
   `;
 }
 
-// Same card as the trip's listing (photo, notes, files, cost…); tapping it opens the details popup.
-function renderTodayCard(item){
-  const trip = getTrip(item.tripId);
-  if(!trip) return '';
-  const past = item.timeStart && item.timeStart < nowTime();
-  return `<div class="today-item" style="${past?'opacity:.6;':''}">${renderItemCard(item, trip)}</div>`;
+// Same cards as the trip's listing (photo, notes, files, cost…) with the walking/transit
+// distance badge and Notes button between them; tapping a card opens the details popup.
+let todayLists = [];
+function renderTodayList(list){
+  todayLists = [];
+  const groups = [];
+  list.forEach(i=>{
+    let g = groups.find(x=>x.tripId===i.tripId);
+    if(!g){ g = { tripId:i.tripId, items:[] }; groups.push(g); }
+    g.items.push(i);
+  });
+  return groups.map(g=>{
+    const trip = getTrip(g.tripId);
+    if(!trip) return '';
+    todayLists.push({ trip, items:g.items });
+    return `<div class="today-item">${renderItemsWithDistanceBadges(g.items, trip)}</div>`;
+  }).join('');
 }
 
 /* ============ MODAL HELPERS ============ */
