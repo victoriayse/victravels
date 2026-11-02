@@ -5343,9 +5343,11 @@ let totalVictoria = 0, totalWengSeng = 0, unassignedTotal = 0, unassignedCount =
   });
   totalVictoria += adjustmentsVictoria;
   totalWengSeng += adjustmentsWengSeng;
-  const combined = totalVictoria + totalWengSeng;
+  // Adjustments are NOT shared: each one belongs 100% to the person it's under, so they're
+  // left out of the split-in-half pool and added to the balance in full.
+  const combined = totalVictoria + totalWengSeng - adjustmentsVictoria - adjustmentsWengSeng;
   const fairShare = combined / 2;
-  const rawBalance = totalVictoria - fairShare; // positive: Victoria fronted more than her fair share
+  const rawBalance = totalVictoria - fairShare - adjustmentsWengSeng; // positive: Victoria fronted more than her fair share
   const settlements = trip.settlements || [];
   let settledToVictoria = 0, settledFromVictoria = 0;
   settlements.forEach(s=>{
@@ -5482,9 +5484,9 @@ function renderFinance(){
         <summary style="cursor:pointer;font-weight:600;color:var(--muted,#6b6b80);">How is this calculated?</summary>
         <div style="margin-top:8px;line-height:1.7;">
           <div>1. Every item with a cost is added to whoever it's <strong>Booked by</strong> (all statuses count). "Both" splits 50/50; items with no "Booked by" are skipped. A hotel stay or duplicated card counts once.</div>
-          <div>2. Victoria paid <strong>${fmtCost(balance.totalVictoria)}</strong> + Weng Seng paid <strong>${fmtCost(balance.totalWengSeng)}</strong> = <strong>${fmtCost(balance.totalVictoria+balance.totalWengSeng)}</strong> total${(balance.adjustmentsVictoria||balance.adjustmentsWengSeng)?' (includes manual adjustments)':''}.</div>
-          <div>3. Fair share each = total ÷ 2 = <strong>${fmtCost(balance.fairShare)}</strong>.</div>
-          <div>4. Victoria paid ${fmtCost(balance.totalVictoria)} − fair share ${fmtCost(balance.fairShare)} = <strong>${fmtCost(balance.rawBalance)}</strong> extra.</div>
+          <div>2. Victoria paid <strong>${fmtCost(balance.totalVictoria)}</strong> + Weng Seng paid <strong>${fmtCost(balance.totalWengSeng)}</strong>${(balance.adjustmentsVictoria||balance.adjustmentsWengSeng)?` (these include adjustments: Victoria ${fmtCost(balance.adjustmentsVictoria)}, Weng Seng ${fmtCost(balance.adjustmentsWengSeng)})`:''}.</div>
+          <div>3. Adjustments are <strong>not split</strong> — they count 100% to the person they're under. Fair share each = (total − adjustments) ÷ 2 = <strong>${fmtCost(balance.fairShare)}</strong>.</div>
+          <div>4. Victoria paid ${fmtCost(balance.totalVictoria)} − fair share ${fmtCost(balance.fairShare)}${balance.adjustmentsWengSeng?` − Weng Seng's adjustments ${fmtCost(balance.adjustmentsWengSeng)}`:''} = <strong>${fmtCost(balance.rawBalance)}</strong> extra.</div>
           <div>5. Less settlements already paid back to Victoria (${fmtCost(balance.netSettlement)}) = <strong>${fmtCost(Math.abs(balance.finalBalance))}</strong> ${balance.finalBalance>=0?'still owed by Weng Seng':'owed by Victoria'}.</div>
         </div>
       </details>
