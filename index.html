@@ -2970,7 +2970,7 @@ function renderOverviewCard(trip){
   const countries = trip.countries||[];
   // Every listing's cost is normalized to SGD before summing — a mix of EUR- and
   // SGD-entered activities still adds up to one meaningful total.
-  const totalSgd = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+toSgd(i.costTotal,i.currency),0);
+  const totalSgd = costItems(trip).reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card">
       <div class="section-title">Trip Overview</div>
@@ -2984,8 +2984,32 @@ function renderOverviewCard(trip){
     </div>`;
 }
 
+// Summary cards list each stay/flight once, even if the user duplicated the card.
+// Same name + dates (+ start time) = one entry; prefer the Booked one.
+function dedupeSummary(list){
+  const seen = new Map();
+  list.forEach(i=>{
+    const k = [(i.name||'').trim().toLowerCase(), i.dateStart||'', i.dateEnd||'', i.timeStart||''].join('|');
+    const prev = seen.get(k);
+    if(!prev || (prev.status!=='Booked' && i.status==='Booked')) seen.set(k, i);
+  });
+  const keep = new Set(seen.values());
+  return list.filter(i=>keep.has(i));
+}
+// Items whose cost counts toward totals: no continuation rows / POIs, and a duplicated card
+// (same name + start date + cost) is only counted once.
+function costItems(trip){
+  const seen = new Set();
+  return (trip.items||[]).filter(i=>{
+    if(i.isDuplicate || i.isPoi) return false;
+    if(!(Number(i.costTotal)>0)) return true;
+    const k = [(i.name||'').trim().toLowerCase(), i.dateStart||'', Number(i.costTotal), i.currency||''].join('|');
+    if(seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+}
 function renderFlightCard(trip){
-  const flights = (trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate && !i.isPoi).sort(compareItems);
+  const flights = dedupeSummary((trip.items||[]).filter(i=>i.type==='Flight' && !i.isDuplicate && !i.isPoi).sort(compareItems));
   return `
     <div class="card">
       <div class="section-title">Flight Details</div>
@@ -3006,7 +3030,7 @@ function renderFlightCard(trip){
 }
 
 function renderAccommodationsCard(trip){
-  const stays = (trip.items||[]).filter(i=>i.type==='Stays' && !i.isDuplicate && !i.isPoi).sort(compareItems);
+  const stays = dedupeSummary((trip.items||[]).filter(i=>i.type==='Stays' && !i.isDuplicate && !i.isPoi).sort(compareItems));
   return `
     <div class="card">
       <div class="section-title">Accommodations</div>
@@ -3027,7 +3051,7 @@ function renderAccommodationsCard(trip){
 
 function renderExpensesCard(trip){
   const filter = ui.homeExpensesFilter;
-  const items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
+  const items = costItems(trip).filter(i=>Number(i.costTotal)>0 && (filter==='all' || i.status===filter));
   const total = items.reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card">
@@ -3053,8 +3077,8 @@ function renderExpensesChart(){
   if(!trip) return;
   const filter = ui.homeExpensesFilter;
   const byType = {};
-  (trip.items||[]).forEach(i=>{
-    if(!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency);
+  costItems(trip).forEach(i=>{
+    if(Number(i.costTotal)>0 && (filter==='all' || i.status===filter)) byType[i.type] = (byType[i.type]||0) + toSgd(i.costTotal,i.currency);
   });
   const labels = Object.keys(byType);
   if(expensesChart) expensesChart.destroy();
@@ -3173,7 +3197,7 @@ function renderTrips(){
 }
 
 function renderTripCard(trip){
-  const total = (trip.items||[]).reduce((s,i)=>(i.isDuplicate||i.isPoi)?s:s+toSgd(i.costTotal,i.currency),0);
+  const total = costItems(trip).reduce((s,i)=>s+toSgd(i.costTotal,i.currency),0);
   return `
     <div class="card trip-card" onclick="openTripDetail('${trip.id}')">
       <h3>${escapeHtml(trip.name)}</h3>
@@ -5295,8 +5319,8 @@ let financeChart = null;
 // deliberately excluded from the balance (rather than guessed at) and called out separately
 // so Victoria knows which ones to go fill in for an accurate number.
 function computeFinanceBalance(trip){
-  const items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0);
-  let totalVictoria = 0, totalWengSeng = 0, unassignedTotal = 0, unassignedCount = 0;
+  const items = costItems(trip).filter(i=>Number(i.costTotal)>0);
+let totalVictoria = 0, totalWengSeng = 0, unassignedTotal = 0, unassignedCount = 0;
   items.forEach(i=>{
     const sgd = toSgd(i.costTotal, i.currency);
     if(i.bookedBy==='Victoria') totalVictoria += sgd;
@@ -5333,7 +5357,7 @@ function computeFinanceBalance(trip){
   return { totalVictoria, totalWengSeng, unassignedTotal, unassignedCount, fairShare, finalBalance };
 }
 function getFilteredFinanceItems(trip){
-  let items = (trip.items||[]).filter(i=>!i.isDuplicate && !i.isPoi && Number(i.costTotal)>0);
+  let items = costItems(trip).filter(i=>Number(i.costTotal)>0);
   if(ui.financeTypeFilter!=='all') items = items.filter(i=>i.type===ui.financeTypeFilter);
   if(ui.financeStatusFilter!=='all') items = items.filter(i=>i.status===ui.financeStatusFilter);
   if(ui.financeBookedByFilter!=='all'){
