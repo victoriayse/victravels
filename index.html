@@ -3003,7 +3003,8 @@ function costItems(trip){
   return (trip.items||[]).filter(i=>{
     if(i.isDuplicate || i.isPoi) return false;
     if(!(Number(i.costTotal)>0)) return true;
-    const k = [(i.name||'').trim().toLowerCase(), i.dateStart||'', Number(i.costTotal), i.currency||''].join('|');
+    // A hotel stay is one cost however many days/cards it has, so ignore the date for Stays.
+    const k = [(i.name||'').trim().toLowerCase(), i.type==='Stays' ? '' : (i.dateStart||''), Number(i.costTotal), i.currency||''].join('|');
     if(seen.has(k)) return false;
     seen.add(k); return true;
   });
