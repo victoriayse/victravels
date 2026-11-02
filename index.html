@@ -5355,7 +5355,7 @@ let totalVictoria = 0, totalWengSeng = 0, unassignedTotal = 0, unassignedCount =
   });
   const netSettlement = settledToVictoria - settledFromVictoria; // net money Victoria has actually received back
   const finalBalance = rawBalance - netSettlement; // positive: Weng Seng still owes Victoria this much
-  return { totalVictoria, totalWengSeng, unassignedTotal, unassignedCount, fairShare, finalBalance };
+  return { totalVictoria, totalWengSeng, unassignedTotal, unassignedCount, fairShare, finalBalance, rawBalance, netSettlement, adjustmentsVictoria, adjustmentsWengSeng };
 }
 function getFilteredFinanceItems(trip){
   let items = costItems(trip).filter(i=>Number(i.costTotal)>0);
@@ -5478,6 +5478,16 @@ function renderFinance(){
         <div><div class="stat-num">${fmtCost(balance.fairShare)}</div><div class="stat-label">FAIR SHARE EACH</div></div>
       </div>
       <div class="balance-banner ${bannerClass}">${bannerText}</div>
+      <details style="margin-top:12px;font-size:13px;">
+        <summary style="cursor:pointer;font-weight:600;color:var(--muted,#6b6b80);">How is this calculated?</summary>
+        <div style="margin-top:8px;line-height:1.7;">
+          <div>1. Every item with a cost is added to whoever it's <strong>Booked by</strong> (all statuses count). "Both" splits 50/50; items with no "Booked by" are skipped. A hotel stay or duplicated card counts once.</div>
+          <div>2. Victoria paid <strong>${fmtCost(balance.totalVictoria)}</strong> + Weng Seng paid <strong>${fmtCost(balance.totalWengSeng)}</strong> = <strong>${fmtCost(balance.totalVictoria+balance.totalWengSeng)}</strong> total${(balance.adjustmentsVictoria||balance.adjustmentsWengSeng)?' (includes manual adjustments)':''}.</div>
+          <div>3. Fair share each = total ÷ 2 = <strong>${fmtCost(balance.fairShare)}</strong>.</div>
+          <div>4. Victoria paid ${fmtCost(balance.totalVictoria)} − fair share ${fmtCost(balance.fairShare)} = <strong>${fmtCost(balance.rawBalance)}</strong> extra.</div>
+          <div>5. Less settlements already paid back to Victoria (${fmtCost(balance.netSettlement)}) = <strong>${fmtCost(Math.abs(balance.finalBalance))}</strong> ${balance.finalBalance>=0?'still owed by Weng Seng':'owed by Victoria'}.</div>
+        </div>
+      </details>
       ${balance.unassignedCount>0? `<div class="muted-note" style="margin-top:10px;">${balance.unassignedCount} item${balance.unassignedCount===1?'':'s'} with a cost (${fmtCost(balance.unassignedTotal)}) ${balance.unassignedCount===1?"has":"have"} no "Booked by" set, so ${balance.unassignedCount===1?"it isn't":"they aren't"} included in the balance above.</div>` : ''}
     </div>
 
