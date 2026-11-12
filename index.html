@@ -3834,6 +3834,7 @@ function promoHtml(){
 function openPromoModal(tripId){
   promoCtx = { tripId, editId:null };
   openModal(promoHtml(), true);
+  modalPreventOutsideClose = true;
 }
 function promoRefresh(){
   const el = document.getElementById('modal-content');
