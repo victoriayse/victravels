@@ -3860,12 +3860,14 @@ function promoHtml(){
     });
   } else {
     data.accounts.slice().sort((a,b)=>cmp(a.email,b.email)).forEach(a=>{
+      const collapsed = !!(ui.promoCollapsed && ui.promoCollapsed[a.id]);
       body += `<div style="margin:14px 0 8px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <div style="font-weight:700;">👤 ${escapeHtml(a.email||'No account email')} <span class="muted-note" style="margin:0 0 0 4px;">${a.deals.length} deal${a.deals.length===1?'':'s'}</span></div>
+        <div style="font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0;" onclick="promoToggleCollapse('${a.id}')" title="${collapsed?'Expand':'Collapse'}"><span style="display:inline-block;width:14px;font-size:12px;">${collapsed?'▶':'▼'}</span><span style="overflow-wrap:anywhere;">👤 ${escapeHtml(a.email||'No account email')}</span> <span class="muted-note" style="margin:0 0 0 4px;white-space:nowrap;">${a.deals.length} deal${a.deals.length===1?'':'s'}</span></div>
         <div style="white-space:nowrap;">
           <button type="button" class="btn btn-sm" onclick="promoAddDealFor('${a.id}')">+ Deal</button>
           <button type="button" class="btn btn-sm" style="color:#c0392b;" onclick="promoDeleteAccount('${a.id}')">Remove</button>
         </div></div>`;
+      if(collapsed) return;
       body += a.deals.length ? sortDeals(a.deals).map(d=>dealCard(a, d, false)).join('') : '<p class="muted-note" style="margin:0 0 6px;">No deals for this account yet.</p>';
     });
   }
@@ -3941,8 +3943,14 @@ function promoEdit(accId, dealId){
   promoCtx.addFor = null;
   promoRefresh(!!accId);
 }
+function promoToggleCollapse(accId){
+  ui.promoCollapsed = ui.promoCollapsed || {};
+  ui.promoCollapsed[accId] = !ui.promoCollapsed[accId];
+  promoRefresh();
+}
 function promoAddDealFor(accId){
   promoCtx.editKey = null; promoCtx.addFor = accId;
+  if(ui.promoCollapsed) ui.promoCollapsed[accId] = false;
   promoRefresh(true);
   const d = document.getElementById('promo-deal'); if(d) d.focus();
 }
