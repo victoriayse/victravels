@@ -3780,7 +3780,10 @@ function promoHtml(){
       ${(p.city||p.country)? `<div class="muted-note" style="margin:4px 0;">📍 ${escapeHtml([p.city,p.country].filter(Boolean).join(', '))}</div>` : ''}
       ${p.createdBy? `<div class="muted-note" style="margin:4px 0;">✍️ Created by: ${escapeHtml(p.createdBy)}</div>` : ''}
       ${p.info? `<div style="margin:6px 0;white-space:pre-wrap;font-size:13.5px;">${escapeHtml(p.info)}</div>` : ''}
-      ${(p.accounts&&p.accounts.length)? `<div style="font-size:13px;margin-top:6px;">👤 ${p.accounts.map(a=>`<span style="display:inline-block;background:var(--bg-soft,#f4f2ec);border-radius:999px;padding:2px 10px;margin:2px 4px 2px 0;">${escapeHtml(a)}</span>`).join('')}</div>` : ''}
+      ${(p.accounts&&p.accounts.length)? `<div style="font-size:13px;margin-top:6px;">${p.accounts.map((a,ai)=>{
+        const used = (p.used||[]).includes(a);
+        return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;${used?'opacity:.55;text-decoration:line-through;':''}"><input type="checkbox" ${used?'checked':''} onchange="promoToggleUsed('${p.id}',${ai},this.checked)" style="width:auto;margin:0;"><span>👤 ${escapeHtml(a)}</span>${used?'<span style="text-decoration:none;display:inline-block;font-size:11px;color:#1a7a42;font-weight:600;">USED</span>':''}</label>`;
+      }).join('')}</div>` : ''}
     </div>`;
   let body = '';
   if(!list.length) body = '<p class="muted-note">No deals saved yet. Add one below.</p>';
@@ -3860,11 +3863,26 @@ async function promoSave(){
   };
   const list = promoList(trip);
   const idx = list.findIndex(p=>p.id===rec.id);
-  if(idx>=0) list[idx] = { ...list[idx], ...rec }; else list.push({ ...rec, created: Date.now() });
+  if(idx>=0){
+    rec.used = (list[idx].used||[]).filter(a=>rec.accounts.includes(a));
+    list[idx] = { ...list[idx], ...rec };
+  } else list.push({ ...rec, used: [], created: Date.now() });
   if(!(await promoSaveAll(promoCtx.tripId, list))) return;
   promoCtx.editId = null;
   promoRefresh();
   showToast('Deal saved');
+}
+async function promoToggleUsed(id, acctIdx, checked){
+  const trip = getTrip(promoCtx.tripId);
+  const list = promoList(trip);
+  const p = list.find(x=>x.id===id);
+  if(!p || !p.accounts || !p.accounts[acctIdx]) return;
+  const email = p.accounts[acctIdx];
+  const used = new Set(p.used||[]);
+  if(checked) used.add(email); else used.delete(email);
+  p.used = [...used];
+  if(!(await promoSaveAll(promoCtx.tripId, list))) return;
+  promoRefresh();
 }
 async function promoDelete(id){
   if(!confirm('Delete this deal?')) return;
