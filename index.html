@@ -3782,7 +3782,7 @@ function promoHtml(){
       ${p.info? `<div style="margin:6px 0;white-space:pre-wrap;font-size:13.5px;">${escapeHtml(p.info)}</div>` : ''}
       ${(p.accounts&&p.accounts.length)? `<div style="font-size:13px;margin-top:6px;">${p.accounts.map((a,ai)=>{
         const used = (p.used||[]).includes(a);
-        return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;${used?'opacity:.55;text-decoration:line-through;':''}"><input type="checkbox" ${used?'checked':''} onchange="promoToggleUsed('${p.id}',${ai},this.checked)" style="width:auto;margin:0;"><span>👤 ${escapeHtml(a)}</span>${used?'<span style="text-decoration:none;display:inline-block;font-size:11px;color:#1a7a42;font-weight:600;">USED</span>':''}</label>`;
+        return `<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;${used?'opacity:.55;text-decoration:line-through;':''}"><input type="checkbox" ${used?'checked':''} onchange="promoToggleUsed('${p.id}',${ai},this.checked)" style="width:auto;margin:0;"><span>👤 ${escapeHtml(a)}</span>${promoExpiryBadge(p.expiry&&p.expiry[a])}${used?'<span style="text-decoration:none;display:inline-block;font-size:11px;color:#1a7a42;font-weight:600;">USED</span>':''}</label>`;
       }).join('')}</div>` : ''}
     </div>`;
   let body = '';
@@ -3822,7 +3822,7 @@ function promoHtml(){
         </select>
       </div>
       <div class="field"><label class="field-label">Account email(s)</label>
-        <div id="promo-accounts">${accts.map(a=>`<input type="email" class="promo-acct" style="margin-bottom:6px;" placeholder="name@email.com" value="${escapeHtml(a)}">`).join('')}</div>
+        <div id="promo-accounts">${accts.map(a=>promoAcctRowHtml(a, editing&&editing.expiry?editing.expiry[a]:'')).join('')}</div>
         <button type="button" class="btn btn-sm" onclick="promoAddAccount()">+ Add another account</button>
       </div>
       <div class="modal-footer">
@@ -3840,12 +3840,27 @@ function promoRefresh(){
   if(el) el.innerHTML = promoHtml();
 }
 function promoEdit(id){ promoCtx.editId = id; promoRefresh(); }
+function promoAcctRowHtml(email, expiry){
+  return `<div class="promo-acct-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap;">
+    <input type="email" class="promo-acct" style="flex:2 1 180px;min-width:0;" placeholder="name@email.com" value="${escapeHtml(email||'')}">
+    <label class="muted-note" style="display:flex;align-items:center;gap:6px;flex:1 1 160px;margin:0;">Expires <input type="date" class="promo-expiry" style="flex:1;min-width:0;" value="${escapeHtml(expiry||'')}"></label>
+  </div>`;
+}
 function promoAddAccount(){
   const box = document.getElementById('promo-accounts');
   if(!box) return;
-  const inp = document.createElement('input');
-  inp.type = 'email'; inp.className = 'promo-acct'; inp.placeholder = 'name@email.com'; inp.style.marginBottom = '6px';
-  box.appendChild(inp); inp.focus();
+  box.insertAdjacentHTML('beforeend', promoAcctRowHtml('',''));
+  const rows = box.querySelectorAll('.promo-acct');
+  rows[rows.length-1].focus();
+}
+// "Expired" / "Expires in Nd" / plain date label for one account's expiry.
+function promoExpiryBadge(dateStr){
+  if(!dateStr) return '';
+  const days = daysBetween(todayStr(), dateStr);
+  const nice = fmtDateShort(dateStr);
+  if(days < 0) return `<span style="text-decoration:none;display:inline-block;font-size:11px;font-weight:600;color:#fff;background:#d92d20;border-radius:999px;padding:1px 8px;">Expired ${nice}</span>`;
+  if(days <= 7) return `<span style="text-decoration:none;display:inline-block;font-size:11px;font-weight:600;color:#92400e;background:#fde7b0;border-radius:999px;padding:1px 8px;">${days===0?'Expires today':'Expires in '+days+'d'} · ${nice}</span>`;
+  return `<span style="text-decoration:none;display:inline-block;font-size:11px;color:var(--text-muted,#6b6b80);">⏳ Expires ${nice}</span>`;
 }
 async function promoSave(){
   const trip = getTrip(promoCtx.tripId);
@@ -3859,8 +3874,16 @@ async function promoSave(){
     city: document.getElementById('promo-city').value.trim(),
     country: document.getElementById('promo-country').value.trim(),
     createdBy: document.getElementById('promo-createdby').value,
-    accounts: [...document.querySelectorAll('.promo-acct')].map(i=>i.value.trim()).filter(Boolean),
+    accounts: [],
+    expiry: {},
   };
+  document.querySelectorAll('.promo-acct-row').forEach(row=>{
+    const email = row.querySelector('.promo-acct').value.trim();
+    if(!email) return;
+    rec.accounts.push(email);
+    const ex = row.querySelector('.promo-expiry').value;
+    if(ex) rec.expiry[email] = ex;
+  });
   const list = promoList(trip);
   const idx = list.findIndex(p=>p.id===rec.id);
   if(idx>=0){
