@@ -4288,6 +4288,7 @@ function toggleItemPopover(e, itemId, tripId){
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
     <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
     <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
+    ${(()=>{ const t = getTrip(tripId); const it = t && t.items.find(x=>x.id===itemId); return (it && !it.isPoi && !it.isDuplicate) ? `<button onclick="closePopovers();moveItemToPoi('${tripId}','${itemId}')">⭐ Move to Places of Interest</button>` : ''; })()}
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
   pop.addEventListener('click', e2=>e2.stopPropagation()); // keep clicks inside from also opening the card's detail popup
@@ -6817,6 +6818,32 @@ function showPoiDayPicker(tripId, itemId){
       <select id="poi-add-day" class="filter-select" style="flex:1;min-width:0;">${opts.join('')}</select>
       <button type="button" class="btn btn-primary" onclick="addPoiToItinerary('${tripId}','${itemId}')">Add</button>
     </div>`;
+}
+// Reverse of addPoiToItinerary: takes a card off the itinerary and files it under Places of
+// Interest. Any auto-generated "Continued" copies (multi-day items) are removed, and the dates
+// are cleared since a place of interest isn't scheduled.
+async function moveItemToPoi(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  if(!item) return;
+  const kids = trip.items.filter(i=>i.parentActivityId===itemId);
+  if(!confirm(`Move "${item.name||'this card'}" to Places of Interest?${kids.length?' Its "Continued" copies on other days will be removed.':''}`)) return;
+  const maxOrder = Math.max(0, ...trip.items.filter(i=>i.isPoi).map(i=>i.order||0));
+  beginLoading();
+  try{
+    if(kids.length){
+      await sb.from('activities').delete().in('id', kids.map(k=>k.id));
+      trip.items = trip.items.filter(i=>i.parentActivityId!==itemId);
+    }
+    const upd = { is_poi: true, date_start: null, date_end: null, time_start: null, time_end: null, sort_order: maxOrder + 1 };
+    const { error } = await sb.from('activities').update(upd).eq('id', itemId);
+    if(error){ alert('Could not move to Places of Interest: '+error.message); return; }
+    item.isPoi = true; item.dateStart = null; item.dateEnd = null; item.timeStart = null; item.timeEnd = null; item.order = maxOrder + 1;
+    render();
+    showToast('Moved to Places of Interest');
+  } finally {
+    endLoading();
+  }
 }
 async function addPoiToItinerary(tripId, itemId){
   const trip = getTrip(tripId);
