@@ -255,6 +255,8 @@
      icon usually reads as its own distinct action rather than a normal form button. */
   .btn-share{background:#1a7a42;border-color:#1a7a42;color:#fff;font-weight:600;}
   .btn-share:hover{background:#156334;border-color:#156334;}
+  .btn-notes{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;}
+  .btn-notes:hover{background:#1d4ed8;border-color:#1d4ed8;}
   .btn-promo{background:#d92d20;border-color:#d92d20;color:#fff;font-weight:600;}
   .btn-promo:hover{background:#b42318;border-color:#b42318;}
   .btn-ghost{background:transparent;border-color:transparent;}
@@ -3427,6 +3429,7 @@ function renderTripDetail(){
       </select>
       <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter!=='all'&&Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
       <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn btn-sm btn-notes" onclick="openNotesModal('${trip.id}')" title="Trip notes">Notes</button>
         <button class="btn btn-sm btn-promo" onclick="openPromoModal('${trip.id}')" title="Deals & promotions">Promotions</button>
         ${ui.dayFilter!=='all'? `<button class="btn btn-sm btn-share" onclick="shareDayPlan('${trip.id}')" title="Share this day's plan">Share Day</button>` : ''}
       </div>
@@ -3742,6 +3745,278 @@ function autoLinkNode(root){
     frag.appendChild(document.createTextNode(t.nodeValue.slice(last)));
     t.parentNode.replaceChild(frag, t);
   });
+}
+/* ---- Notes: location + title + rich text + attachments + link.
+   Stored in trip.dayTitles under "notes2" as a JSON array. Auto-filters to the city you're in. ---- */
+const NOTE_CITIES = ['Amsterdam','Munich','Venice','Strasbourg','Colmar','Paris'];
+const NOTE_MAX_FILE = 50*1024*1024; // 50 MB per file
+let noteCtx = { tripId:null, view:'list', editId:null, expanded:{}, confirmDel:null, draft:null, filter:'all', touched:false, locating:false, auto:null };
+function noteList(trip){
+  try{ const r = trip && trip.dayTitles && trip.dayTitles.notes2; return r ? (JSON.parse(r)||[]) : []; }catch(e){ return []; }
+}
+async function noteSaveAll(list){
+  const trip = getTrip(noteCtx.tripId);
+  if(!trip) return false;
+  const titles = { ...(trip.dayTitles||{}) };
+  if(list.length) titles.notes2 = JSON.stringify(list); else delete titles.notes2;
+  const { error } = await sb.from('trips').update({ day_titles: titles }).eq('id', noteCtx.tripId);
+  if(error){ alert('Could not save: '+error.message); return false; }
+  trip.dayTitles = titles;
+  return true;
+}
+function noteUid(){ return 'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function noteSafeUrl(u){
+  u = (u||'').trim();
+  if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u = 'https://'+u;
+  try{ const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ''; }catch(e){ return ''; }
+}
+function noteSnippet(html){
+  const t = document.createElement('template');
+  t.innerHTML = sanitizeNoteHtml(html||'');
+  const s = (t.content.textContent||'').replace(/\s+/g,' ').trim();
+  return s.length>110 ? s.slice(0,110)+'…' : s;
+}
+function noteFilesHtml(files){
+  if(!files || !files.length) return '';
+  const imgs = files.filter(f=>f.image), others = files.filter(f=>!f.image);
+  return `<div style="margin-top:10px;">
+    ${imgs.length? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;">${imgs.map(f=>`<a href="${escapeHtml(coverPublicUrl(f.path))}" target="_blank" rel="noopener"><img src="${escapeHtml(coverPublicUrl(f.path))}" alt="${escapeHtml(f.name)}" style="width:96px;height:96px;object-fit:cover;border-radius:10px;border:1px solid var(--border,#e6e3da);"></a>`).join('')}</div>` : ''}
+    ${others.map(f=>`<div><a class="nav-btn" href="${escapeHtml(coverPublicUrl(f.path))}" target="_blank" rel="noopener">📎 ${escapeHtml(f.name)}</a></div>`).join('')}
+  </div>`;
+}
+function noteCardHtml(n){
+  const open = !!noteCtx.expanded[n.id];
+  const link = noteSafeUrl(n.link);
+  const meta = [n.location? '📍 '+escapeHtml(n.location) : '', n.updated||n.created? '🗓 '+escapeHtml(new Date(n.updated||n.created).toLocaleDateString(undefined,{day:'numeric',month:'short'})) : '',
+    (n.files&&n.files.length)? '📎 '+n.files.length : '', link? '🔗' : ''].filter(Boolean).join(' · ');
+  return `<div style="border:1px solid var(--border,#e6e3da);border-radius:12px;margin-bottom:10px;background:#fff;">
+    <div style="padding:10px 12px;cursor:pointer;display:flex;gap:8px;align-items:flex-start;" onclick="noteToggle('${n.id}')">
+      <span style="font-size:12px;width:14px;margin-top:3px;">${open?'▼':'▶'}</span>
+      <div style="min-width:0;flex:1;">
+        <div style="font-weight:700;font-size:15px;overflow-wrap:anywhere;">${escapeHtml(n.title||'Untitled note')}</div>
+        <div class="muted-note" style="margin:2px 0 0;">${meta}</div>
+        ${open? '' : (noteSnippet(n.body)? `<div style="margin-top:4px;font-size:13px;color:var(--text-muted,#6b6b80);overflow-wrap:anywhere;">${escapeHtml(noteSnippet(n.body))}</div>` : '')}
+      </div>
+    </div>
+    ${open? `<div style="padding:0 14px 12px 34px;">
+      ${n.body? `<div class="leg-note-body" style="margin-top:0;">${sanitizeNoteHtml(n.body)}</div>` : ''}
+      ${noteFilesHtml(n.files)}
+      ${link? `<div style="margin-top:8px;"><a class="nav-btn" href="${escapeHtml(link)}" target="_blank" rel="noopener">🔗 ${escapeHtml(link.replace(/^https?:\/\//,'').slice(0,60))}</a></div>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;align-items:center;flex-wrap:wrap;">
+        ${noteCtx.confirmDel===n.id
+          ? `<span style="color:#c0392b;font-size:13px;font-weight:600;">Delete this note permanently? This can't be undone.</span>
+             <button type="button" class="btn btn-sm" onclick="noteAskDelete(null)">Cancel</button>
+             <button type="button" class="btn btn-sm" style="background:#d92d20;border-color:#d92d20;color:#fff;" onclick="noteDeleteConfirmed('${n.id}')">Yes, delete</button>`
+          : `<button type="button" class="btn btn-sm" onclick="noteEdit('${n.id}')">✏️ Edit</button>
+             <button type="button" class="btn btn-sm" style="color:#c0392b;" onclick="noteAskDelete('${n.id}')">🗑️ Delete</button>`}
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+function noteListHtml(){
+  const trip = getTrip(noteCtx.tripId);
+  const all = noteList(trip);
+  const sort = ui.noteSort || 'location';
+  const locs = [...NOTE_CITIES];
+  all.forEach(n=>{ if(n.location && !locs.includes(n.location)) locs.push(n.location); });
+  let list = all.slice();
+  if(noteCtx.filter!=='all') list = list.filter(n=>n.location===noteCtx.filter);
+  const cmp = (a,b)=>String(a||'').localeCompare(String(b||''), undefined, {sensitivity:'base'});
+  const locRank = l => { const i = NOTE_CITIES.indexOf(l); return l ? (i>=0 ? i : 100) : 999; };
+  list.sort((a,b)=>{
+    if(sort==='title') return cmp(a.title,b.title);
+    if(sort==='newest') return (b.created||0)-(a.created||0);
+    return (locRank(a.location)-locRank(b.location)) || cmp(a.location,b.location) || ((b.created||0)-(a.created||0));
+  });
+  let body = '';
+  if(!all.length) body = '<p class="muted-note">No notes yet. Tap “+ Add note” to create one.</p>';
+  else if(!list.length) body = `<p class="muted-note">No notes for ${escapeHtml(noteCtx.filter)}. <a href="#" onclick="noteSetFilter('all');return false;">Show all notes</a></p>`;
+  else {
+    let last = null;
+    list.forEach(n=>{
+      if(sort==='location' && noteCtx.filter==='all'){
+        const l = n.location || 'No location';
+        if(l!==last){ body += `<div style="font-weight:700;margin:14px 0 8px;color:var(--text-muted,#6b6b80);text-transform:uppercase;font-size:12px;letter-spacing:.04em;">${escapeHtml(l)}</div>`; last = l; }
+      }
+      body += noteCardHtml(n);
+    });
+  }
+  const status = noteCtx.locating ? '<div class="muted-note" style="margin:0 0 8px;">📍 Finding your location…</div>'
+    : (noteCtx.auto && noteCtx.filter===noteCtx.auto) ? `<div class="muted-note" style="margin:0 0 8px;">📍 Showing notes for <strong>${escapeHtml(noteCtx.auto)}</strong> (your current location) · <a href="#" onclick="noteSetFilter('all');return false;">Show all</a></div>` : '';
+  return `<div id="note-list-root">
+    <div class="modal-header"><h3>📝 Notes</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+      <select class="filter-select" onchange="noteSetFilter(this.value)">
+        <option value="all" ${noteCtx.filter==='all'?'selected':''}>All locations</option>
+        ${locs.map(l=>`<option value="${escapeHtml(l)}" ${noteCtx.filter===l?'selected':''}>${escapeHtml(l)}</option>`).join('')}
+      </select>
+      <select class="filter-select" onchange="ui.noteSort=this.value;noteRefresh();">
+        <option value="location" ${sort==='location'?'selected':''}>Sort: Location</option>
+        <option value="newest" ${sort==='newest'?'selected':''}>Sort: Newest</option>
+        <option value="title" ${sort==='title'?'selected':''}>Sort: Title</option>
+      </select>
+      <button type="button" class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="noteAdd()">+ Add note</button>
+    </div>
+    ${status}
+    <div style="max-height:58vh;overflow:auto;padding-right:4px;">${body}</div>
+  </div>`;
+}
+function noteFormHtml(){
+  const d = noteCtx.draft;
+  return `<div id="note-form-root">
+    <div class="modal-header"><h3>${noteCtx.editId? 'Edit note' : 'New note'}</h3><button class="modal-close" onclick="noteCancelForm()">&times;</button></div>
+    <div class="field"><label class="field-label">Location</label>
+      <select id="note-location">
+        <option value="">— choose —</option>
+        ${[...NOTE_CITIES, ...(d.location && !NOTE_CITIES.includes(d.location) ? [d.location] : [])].map(l=>`<option value="${escapeHtml(l)}" ${d.location===l?'selected':''}>${escapeHtml(l)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label class="field-label">Title</label><input type="text" id="note-title" value="${escapeHtml(d.title||'')}" placeholder="Title"></div>
+    <div class="field"><label class="field-label">Notes</label>
+      <div class="rt-toolbar">
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('bold')"><b>B</b></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('italic')"><i>I</i></button>
+        <button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('underline')"><u>U</u></button>
+        <button type="button" onmousedown="event.preventDefault()" title="Bullet list" aria-label="Bullet list" onclick="document.execCommand('insertUnorderedList')">•≡</button>
+      </div>
+      <div class="rt-editor" id="note-editor" contenteditable="true" style="min-height:140px;">${sanitizeNoteHtml(d.body||'')}</div>
+    </div>
+    <div class="field"><label class="field-label">Upload <span class="muted-note" style="margin:0;">(photos are compressed automatically · max 50 MB per file)</span></label>
+      <input type="file" id="note-file-input" multiple onchange="noteUploadFiles(event)">
+      <div id="note-files" style="margin-top:6px;">${noteDraftFilesHtml()}</div>
+    </div>
+    <div class="field"><label class="field-label">Link</label><input type="url" id="note-link" value="${escapeHtml(d.link||'')}" placeholder="https://…"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="noteCancelForm()">Cancel</button>
+      <button class="btn btn-primary" onclick="noteSave()">Save</button>
+    </div>
+  </div>`;
+}
+function noteDraftFilesHtml(){
+  const fs = (noteCtx.draft && noteCtx.draft.files) || [];
+  if(!fs.length) return '';
+  return fs.map((f,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:3px 0;">
+    ${f.image? `<img src="${escapeHtml(coverPublicUrl(f.path))}" alt="" style="width:36px;height:36px;object-fit:cover;border-radius:6px;">` : '📎'}
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">${escapeHtml(f.name)}</span>
+    <button type="button" class="btn btn-sm" onclick="noteRemoveDraftFile(${i})">Remove</button></div>`).join('');
+}
+function noteRender(){
+  return noteCtx.view==='form' ? noteFormHtml() : noteListHtml();
+}
+function noteRefresh(){
+  const el = document.getElementById('modal-content');
+  if(el && (document.getElementById('note-list-root') || document.getElementById('note-form-root'))) el.innerHTML = noteRender();
+}
+async function openNotesModal(tripId){
+  noteCtx = { tripId, view:'list', editId:null, expanded:{}, confirmDel:null, draft:null, filter:'all', touched:false, locating:true, auto:null };
+  openModal(noteRender(), true);
+  modalPreventOutsideClose = true;
+  // Auto-filter to the trip city the user is currently in.
+  try{
+    const pos = await getCurrentPosition();
+    let best = null, bd = 1e9;
+    POI_CITIES.forEach(c=>{
+      const d = haversineMeters(pos.lat, pos.lng, c.lat, c.lng) / 1000;
+      if(d < bd){ bd = d; best = c; }
+    });
+    if(noteCtx.tripId===tripId && best && bd<=40 && !noteCtx.touched){ noteCtx.auto = best.n; noteCtx.filter = best.n; }
+  }catch(e){ /* no location — just show everything */ }
+  if(noteCtx.tripId===tripId){ noteCtx.locating = false; if(noteCtx.view==='list') noteRefresh(); }
+}
+function noteSetFilter(v){ noteCtx.filter = v; noteCtx.touched = true; noteRefresh(); }
+function noteToggle(id){ noteCtx.expanded[id] = !noteCtx.expanded[id]; if(!noteCtx.expanded[id] && noteCtx.confirmDel===id) noteCtx.confirmDel = null; noteRefresh(); }
+function noteAskDelete(id){ noteCtx.confirmDel = id; noteRefresh(); }
+function noteAdd(){
+  noteCtx.view = 'form'; noteCtx.editId = null;
+  noteCtx.draft = { location: NOTE_CITIES.includes(noteCtx.filter) ? noteCtx.filter : '', title:'', body:'', files:[], link:'', newPaths:[], origPaths:[] };
+  noteRefresh();
+}
+function noteEdit(id){
+  const n = noteList(getTrip(noteCtx.tripId)).find(x=>x.id===id);
+  if(!n) return;
+  noteCtx.view = 'form'; noteCtx.editId = id;
+  noteCtx.draft = { location:n.location||'', title:n.title||'', body:n.body||'', files:(n.files||[]).map(f=>({...f})), link:n.link||'', newPaths:[], origPaths:(n.files||[]).map(f=>f.path) };
+  noteRefresh();
+}
+async function noteCancelForm(){
+  const d = noteCtx.draft;
+  if(d && d.newPaths.length){ try{ await sb.storage.from('attachments').remove(d.newPaths); }catch(e){} }
+  noteCtx.view = 'list'; noteCtx.draft = null; noteCtx.editId = null;
+  noteRefresh();
+}
+async function noteUploadFiles(e){
+  const files = [...e.target.files]; e.target.value = '';
+  if(!files.length || !noteCtx.draft) return;
+  beginLoading();
+  try{
+    for(const file of files){
+      const isImg = (file.type||'').startsWith('image/');
+      let blob = file, name = sanitizeFileName(file.name);
+      if(isImg){
+        try{ blob = await compressImageFile(file, 1024*1024); name = withJpgExt(file.name); }catch(_){ blob = file; }
+      }
+      if(blob.size > NOTE_MAX_FILE){ alert(`"${file.name}" is over 50 MB, so it wasn't uploaded.`); continue; }
+      const path = `shared/notes/${Date.now()}_${Math.random().toString(36).slice(2,6)}_${name}`;
+      const { error } = await sb.storage.from('attachments').upload(path, blob);
+      if(error){ alert(`Upload failed for "${file.name}": ${error.message}`); continue; }
+      noteCtx.draft.files.push({ name, path, image: isImg && /\.(jpe?g|png|gif|webp)$/i.test(name) });
+      noteCtx.draft.newPaths.push(path);
+    }
+  } finally { endLoading(); }
+  const box = document.getElementById('note-files');
+  if(box) box.innerHTML = noteDraftFilesHtml();
+}
+function noteRemoveDraftFile(i){
+  const d = noteCtx.draft; if(!d) return;
+  const f = d.files[i]; if(!f) return;
+  d.files.splice(i,1);
+  const ni = d.newPaths.indexOf(f.path);
+  if(ni>=0){ d.newPaths.splice(ni,1); sb.storage.from('attachments').remove([f.path]).catch(()=>{}); }
+  const box = document.getElementById('note-files');
+  if(box) box.innerHTML = noteDraftFilesHtml();
+}
+async function noteSave(){
+  const d = noteCtx.draft; if(!d) return;
+  const location = document.getElementById('note-location').value;
+  const title = document.getElementById('note-title').value.trim();
+  const ed = document.getElementById('note-editor');
+  autoLinkNode(ed);
+  let body = sanitizeNoteHtml(ed.innerHTML).trim();
+  if(!ed.textContent.trim()) body = '';
+  const linkRaw = document.getElementById('note-link').value.trim();
+  const link = noteSafeUrl(linkRaw);
+  if(!location){ alert('Please choose a location.'); return; }
+  if(!title){ alert('Please enter a title.'); return; }
+  if(linkRaw && !link){ alert('That link doesn\'t look valid.'); return; }
+  const trip = getTrip(noteCtx.tripId);
+  const list = noteList(trip);
+  const now = Date.now();
+  if(noteCtx.editId){
+    const i = list.findIndex(n=>n.id===noteCtx.editId);
+    if(i>=0) list[i] = { ...list[i], location, title, body, link, files:d.files, updated:now };
+  } else list.push({ id:noteUid(), location, title, body, link, files:d.files, created:now });
+  if(!(await noteSaveAll(list))) return;
+  // Files that were attached before and have been removed in this edit.
+  const kept = new Set(d.files.map(f=>f.path));
+  const gone = d.origPaths.filter(p=>!kept.has(p));
+  if(gone.length){ try{ await sb.storage.from('attachments').remove(gone); }catch(e){} }
+  const savedId = noteCtx.editId || list[list.length-1].id;
+  noteCtx.view = 'list'; noteCtx.draft = null; noteCtx.editId = null;
+  noteCtx.expanded[savedId] = true;
+  noteRefresh();
+  showToast('Note saved');
+}
+async function noteDeleteConfirmed(id){
+  const list = noteList(getTrip(noteCtx.tripId));
+  const n = list.find(x=>x.id===id);
+  if(!n) return;
+  if(!(await noteSaveAll(list.filter(x=>x.id!==id)))) return;
+  const paths = (n.files||[]).map(f=>f.path);
+  if(paths.length){ try{ await sb.storage.from('attachments').remove(paths); }catch(e){} }
+  noteCtx.confirmDel = null; delete noteCtx.expanded[id];
+  noteRefresh();
+  showToast('Note deleted');
 }
 /* ---- Promotions: one email account > many deals; each deal has its own expiry / used tick.
    Stored in trip.dayTitles under "promos2" as JSON {accounts:[{id,email,deals:[...]}]}.
