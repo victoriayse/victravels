@@ -4569,6 +4569,7 @@ function toggleItemPopover(e, itemId, tripId){
     <button onclick="closePopovers();openAddItemModal('${tripId}','${itemId}')">✏️ Edit</button>
     <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
     <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
+    <button onclick="closePopovers();openMergeLocationModal('${tripId}','${itemId}')">📍 Merge location</button>
     ${(()=>{ const t = getTrip(tripId); const it = t && t.items.find(x=>x.id===itemId); return (it && !it.isPoi && !it.isDuplicate) ? `<button onclick="closePopovers();moveItemToPoi('${tripId}','${itemId}')">⭐ Move to Places of Interest</button>` : ''; })()}
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
@@ -7099,6 +7100,48 @@ function showPoiDayPicker(tripId, itemId){
       <select id="poi-add-day" class="filter-select" style="flex:1;min-width:0;">${opts.join('')}</select>
       <button type="button" class="btn btn-primary" onclick="addPoiToItinerary('${tripId}','${itemId}')">Add</button>
     </div>`;
+}
+// "Merge location": copy the map location of the card directly above or below onto this card,
+// so a card that has no location of its own (e.g. a station inside an airport) joins the
+// distance chain next to its neighbour instead of being skipped.
+function openMergeLocationModal(tripId, itemId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  const card = document.getElementById('item-'+itemId);
+  if(!item || !card) return;
+  const group = card.closest('.drag-group');
+  const ids = group ? [...group.querySelectorAll('.item-card')].map(c=>c.id.replace('item-','')) : [];
+  const idx = ids.indexOf(itemId);
+  const top = idx > 0 ? trip.items.find(i=>i.id===ids[idx-1]) : null;
+  const bottom = (idx !== -1 && idx < ids.length-1) ? trip.items.find(i=>i.id===ids[idx+1]) : null;
+  const hasLoc = x => !!x && (!!(x.mapsLink && x.mapsLink.trim()) || (x.lat!=null && x.lng!=null));
+  const opt = (label, other, which) => {
+    const ok = hasLoc(other);
+    return `<button type="button" class="btn" style="display:block;width:100%;text-align:left;margin-bottom:8px;${ok?'':'opacity:.5;cursor:not-allowed;'}" ${ok?`onclick="mergeLocationFrom('${tripId}','${itemId}','${other.id}')"`:'disabled'}>
+      ${label}<br><strong>${escapeHtml(other? (other.name||'Untitled') : 'None')}</strong>${other && !ok? '<br><span class="muted-note" style="margin:0;">No location to copy</span>' : ''}</button>`;
+  };
+  openModal(`
+    <div class="modal-header"><h3>📍 Merge location</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Copy a neighbouring card's location onto "<strong>${escapeHtml(item.name||'Untitled')}</strong>".</p>
+    ${top ? opt('⬆️ Merge with the card above', top) : '<p class="muted-note">No card above.</p>'}
+    ${bottom ? opt('⬇️ Merge with the card below', bottom) : '<p class="muted-note">No card below.</p>'}
+    <div class="modal-footer"><button class="btn" onclick="closeModal()">Cancel</button></div>`);
+}
+async function mergeLocationFrom(tripId, itemId, fromId){
+  const trip = getTrip(tripId);
+  const item = trip && trip.items.find(i=>i.id===itemId);
+  const src = trip && trip.items.find(i=>i.id===fromId);
+  if(!item || !src) return;
+  const upd = { maps_link: src.mapsLink || null, lat: src.lat ?? null, lng: src.lng ?? null, place_id: src.placeId || null };
+  beginLoading();
+  try{
+    const { error } = await sb.from('activities').update(upd).eq('id', itemId);
+    if(error){ alert('Could not merge location: '+error.message); return; }
+    item.mapsLink = src.mapsLink || ''; item.lat = src.lat ?? null; item.lng = src.lng ?? null; item.placeId = src.placeId || null;
+    closeModal();
+    render();
+    showToast('Location copied from "'+(src.name||'card')+'"');
+  } finally { endLoading(); }
 }
 // Reverse of addPoiToItinerary: takes a card off the itinerary and files it under Places of
 // Interest. Any auto-generated "Continued" copies (multi-day items) are removed, and the dates
