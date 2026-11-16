@@ -796,6 +796,19 @@
   .type-pill{background:var(--bg-soft);color:var(--text);font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;letter-spacing:.02em;}
   .drag-group::before{display:none;}
   .card-distance-badge{margin-left:8px;}
+  /* Two cards sharing one row */
+  .split-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:stretch;}
+  .split-row .item-card{margin-bottom:10px;padding:12px 10px 12px 12px;gap:8px;flex-wrap:wrap;}
+  .split-row .item-cover-wrap{display:none;}
+  .split-row .item-side{width:100%;text-align:left;}
+  .split-row .item-name{font-size:14px;}
+  .leg-row.split-leg{margin-left:0;}
+  .split-badges{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;flex:1 1 100%;}
+  .split-badges .card-distance-badge{margin:0;font-size:12px;}
+  @media (max-width:768px){
+    .item-card{--x:0;}
+    .split-row .item-card{grid-template-columns:minmax(0,1fr) 30px;grid-template-areas:"main edit" "side side";}
+  }
   .leg-row{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin:0 0 10px 41px;}
   .leg-row .card-distance-badge{margin:0;}
   .leg-notes-btn{display:inline-flex;align-items:center;gap:5px;background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:600;color:var(--text-muted);box-shadow:var(--shadow);cursor:pointer;font-family:inherit;min-height:26px;}
@@ -3622,23 +3635,83 @@ function cardHasLocation(item){
 // from the last real place to the next one). The badges start empty and are filled in
 // afterwards by loadDistanceBadges() once coordinates for both ends are known — keeps the
 // initial render instant, no request-per-render-call.
+/* ---- Side-by-side cards: a card can be shown beside the card above it ("alt_<id>" = id of the
+   card it sits beside, kept in trip.dayTitles). Both share the same card above / below, so each
+   gets its own travel-time badge from / to that same neighbour. ---- */
+function altOf(trip, id){ return ((trip && trip.dayTitles) || {})['alt_'+id] || ''; }
+function altPartnerOf(trip, id){
+  const t = (trip && trip.dayTitles) || {};
+  const k = Object.keys(t).find(x=>x.startsWith('alt_') && t[x]===id);
+  return k ? k.slice(4) : '';
+}
+// Groups a day's items into rows of one card, or two when the second is set to sit beside the first.
+function itemRows(trip, items){
+  const rows = [];
+  for(let i=0; i<items.length; i++){
+    const it = items[i], nx = items[i+1];
+    if(nx && altOf(trip, nx.id)===it.id){ rows.push([it, nx]); i++; }
+    else rows.push([it]);
+  }
+  return rows;
+}
+// Which travel legs to show after each row, as pairs [fromCard, toCard].
+function rowLegs(rows){
+  const legs = [];
+  for(let r=0; r<rows.length; r++){
+    const L = rows[r].filter(cardHasLocation);
+    if(!L.length) continue;
+    let n = r+1;
+    while(n<rows.length && !rows[n].some(cardHasLocation)) n++;
+    if(n>=rows.length) continue;
+    const N = rows[n].filter(cardHasLocation);
+    let pairs;
+    if(N.length>1) pairs = N.map(b=>[L[0], b]);          // next row is split: one leg to each
+    else if(L.length>1) pairs = L.map(a=>[a, N[0]]);      // this row is split: one leg from each
+    else pairs = [[L[0], N[0]]];
+    legs.push({ r, n, pairs });
+  }
+  return legs;
+}
 function renderItemsWithDistanceBadges(items, trip){
+  const rows = itemRows(trip, items);
+  const legByRow = {};
+  rowLegs(rows).forEach(l=>{ legByRow[l.r] = l; });
   let html = '';
-  items.forEach((item, idx)=>{
-    html += renderItemCard(item, trip);
-    if(!cardHasLocation(item)) return;
-    let nextIdx = idx+1;
-    while(nextIdx < items.length && !cardHasLocation(items[nextIdx])) nextIdx++;
-    if(nextIdx < items.length){
-      const next = items[nextIdx];
-      // Keyed by the card ABOVE the gap, so the note follows that card when cards are dragged around.
-      const legKey = `leg_${item.id}`;
-      const hasNote = !!legNoteGet(trip, legKey);
-      html += `<div class="leg-row"><div class="card-distance-badge" id="distbadge-${item.id}-${next.id}" data-from="${item.id}" data-to="${next.id}"></div>
-        <button type="button" class="leg-notes-btn${hasNote?' has-note':''}" onclick="openLegNotes('${trip.id}','${legKey}')">📝 Notes${hasNote?' ·':''}</button></div>`;
-    }
+  rows.forEach((row, r)=>{
+    html += row.length===1 ? renderItemCard(row[0], trip)
+      : `<div class="split-row">${row.map(i=>renderItemCard(i, trip)).join('')}</div>`;
+    const leg = legByRow[r];
+    if(!leg) return;
+    const from = row.filter(cardHasLocation)[0];
+    // Keyed by the card ABOVE the gap, so the note follows that card when cards are dragged around.
+    const legKey = `leg_${from.id}`;
+    const hasNote = !!legNoteGet(trip, legKey);
+    const badges = leg.pairs.map(([a,b])=>`<div class="card-distance-badge" id="distbadge-${a.id}-${b.id}" data-from="${a.id}" data-to="${b.id}"></div>`);
+    const notesBtn = `<button type="button" class="leg-notes-btn${hasNote?' has-note':''}" onclick="openLegNotes('${trip.id}','${legKey}')">📝 Notes${hasNote?' ·':''}</button>`;
+    html += badges.length===1
+      ? `<div class="leg-row">${badges[0]}${notesBtn}</div>`
+      : `<div class="leg-row split-leg"><div class="split-badges">${badges.join('')}</div>${notesBtn}</div>`;
   });
   return html;
+}
+async function setCardBeside(tripId, itemId, aboveId){
+  const trip = getTrip(tripId);
+  if(!trip) return;
+  const titles = { ...(trip.dayTitles||{}) };
+  const k = 'alt_'+itemId;
+  if(aboveId) titles[k] = aboveId; else delete titles[k];
+  const { error } = await sb.from('trips').update({ day_titles: titles }).eq('id', tripId);
+  if(error){ alert('Could not update: '+error.message); return; }
+  trip.dayTitles = titles;
+  render();
+  showToast(aboveId ? 'Card placed beside the one above' : 'Cards separated');
+}
+function separateSplitRow(tripId, itemId){
+  const trip = getTrip(tripId);
+  const partnerOf = altPartnerOf(trip, itemId);
+  // itemId is either the second card (has alt_ itself) or the first (someone is beside it)
+  const second = altOf(trip, itemId) ? itemId : partnerOf;
+  if(second) setCardBeside(tripId, second, '');
 }
 function renderItemList(items, trip){
   if(ui.dayFilter!=='all'){
@@ -3684,29 +3757,23 @@ async function loadDistanceBadges(trip, items){
     dayGroups[d].push(i);
   });
   for(const day of Object.keys(dayGroups)){
-    const dayItems = dayGroups[day];
-    for(let idx=0; idx<dayItems.length; idx++){
-      const a = dayItems[idx];
-      if(!cardHasLocation(a)) continue;
-      // Mirrors renderItemsWithDistanceBadges' pairing above: skip past any plain note
-      // card (no maps link/location at all) to find the next real place's badge.
-      let nextIdx = idx+1;
-      while(nextIdx<dayItems.length && !cardHasLocation(dayItems[nextIdx])) nextIdx++;
-      if(nextIdx>=dayItems.length) continue;
-      const b = dayItems[nextIdx];
-      const el = document.getElementById(`distbadge-${a.id}-${b.id}`);
-      if(!el || a.lat==null || a.lng==null || b.lat==null || b.lng==null) continue;
-      // Always show BOTH walking and public transport (never driving).
-      const walkLeg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'WALK');
-      const transitLeg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'TRANSIT');
-      if(distanceBadgeRenderToken !== myToken) return; // a newer render superseded this one
-      if(!walkLeg && !transitLeg) continue;
-      const parts = [];
-      if(walkLeg) parts.push(`🚶 ${formatRouteDuration(walkLeg.seconds)} · ${formatDistance(walkLeg.meters)}`);
-      if(transitLeg) parts.push(`🚆 ${formatRouteDuration(transitLeg.seconds)} · ${formatDistance(transitLeg.meters)}`);
-      el.innerHTML = parts.join('<span class="dist-sep"> &nbsp;|&nbsp; </span>');
-      el.classList.add('ready');
-      el.onclick = (ev)=> showNavMethodsPopover(ev, a.lat, a.lng, b.lat, b.lng);
+    const rows = itemRows(trip, dayGroups[day]);
+    for(const leg of rowLegs(rows)){
+      for(const [a, b] of leg.pairs){
+        const el = document.getElementById(`distbadge-${a.id}-${b.id}`);
+        if(!el || a.lat==null || a.lng==null || b.lat==null || b.lng==null) continue;
+        // Always show BOTH walking and public transport (never driving).
+        const walkLeg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'WALK');
+        const transitLeg = await computeRouteLeg(a.lat, a.lng, b.lat, b.lng, 'TRANSIT');
+        if(distanceBadgeRenderToken !== myToken) return; // a newer render superseded this one
+        if(!walkLeg && !transitLeg) continue;
+        const parts = [];
+        if(walkLeg) parts.push(`🚶 ${formatRouteDuration(walkLeg.seconds)} · ${formatDistance(walkLeg.meters)}`);
+        if(transitLeg) parts.push(`🚆 ${formatRouteDuration(transitLeg.seconds)} · ${formatDistance(transitLeg.meters)}`);
+        el.innerHTML = parts.join('<span class="dist-sep"> &nbsp;|&nbsp; </span>');
+        el.classList.add('ready');
+        el.onclick = (ev)=> showNavMethodsPopover(ev, a.lat, a.lng, b.lat, b.lng);
+      }
     }
   }
 }
@@ -4570,6 +4637,13 @@ function toggleItemPopover(e, itemId, tripId){
     <button onclick="closePopovers();duplicateItem('${tripId}','${itemId}')">📄 Duplicate</button>
     <button onclick="closePopovers();openMoveItemModal('${tripId}','${itemId}')">📅 Move</button>
     <button onclick="closePopovers();openMergeLocationModal('${tripId}','${itemId}')">📍 Merge location</button>
+    ${(()=>{
+      const t = getTrip(tripId);
+      if(altOf(t,itemId) || altPartnerOf(t,itemId)) return `<button onclick="closePopovers();separateSplitRow('${tripId}','${itemId}')">↕️ Separate from row</button>`;
+      const aboveId = canUp ? siblingIds[idx-1] : '';
+      return aboveId ? `<button onclick="closePopovers();setCardBeside('${tripId}','${itemId}','${aboveId}')">⇆ Place beside card above</button>` : '';
+    })()}
+
     ${(()=>{ const t = getTrip(tripId); const it = t && t.items.find(x=>x.id===itemId); return (it && !it.isPoi && !it.isDuplicate) ? `<button onclick="closePopovers();moveItemToPoi('${tripId}','${itemId}')">⭐ Move to Places of Interest</button>` : ''; })()}
     <button class="danger" onclick="showDeleteItemConfirm(event,'${itemId}','${tripId}')">🗑️ Delete</button>
   `;
