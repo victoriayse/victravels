@@ -255,6 +255,10 @@
      icon usually reads as its own distinct action rather than a normal form button. */
   .btn-share{background:#1a7a42;border-color:#1a7a42;color:#fff;font-weight:600;}
   .btn-share:hover{background:#156334;border-color:#156334;}
+  .fab-add{position:fixed;right:20px;bottom:24px;width:56px;height:56px;border-radius:50%;border:none;background:var(--primary,#1a7a42);color:#fff;font-size:32px;line-height:1;font-weight:300;display:flex;align-items:center;justify-content:center;padding:0 0 3px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.28);z-index:90;font-family:inherit;}
+  .fab-add:hover{filter:brightness(.92);}
+  .fab-add:active{transform:scale(.94);}
+  @media (max-width:768px){ .fab-add{bottom:calc(96px + env(safe-area-inset-bottom));right:16px;} }
   .btn-notes{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;}
   .btn-notes:hover{background:#1d4ed8;border-color:#1d4ed8;}
   .btn-promo{background:#d92d20;border-color:#d92d20;color:#fff;font-weight:600;}
@@ -3456,6 +3460,7 @@ function renderTripDetail(){
       <button class="btn btn-sm" onclick="openNearbyModal('${trip.id}')">Nearby</button>
       <button class="btn btn-sm" onclick="openToiletsModal()">Toilets</button>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+ Add Activity</button>
+      <button type="button" class="fab-add" title="Add Activity" aria-label="Add Activity" onclick="openAddItemModal('${trip.id}', null, false, '${addDefaultDate}')">+</button>
       <button class="btn btn-sm" onclick="openTripExpenses('${trip.id}')">Trip Expenses</button>
     </div>
 
@@ -3592,6 +3597,7 @@ function renderPlacesOfInterest(){
         <option value="Both" ${ui.bookedByFilter==='Both'?'selected':''}>Booked by: Both</option>
       </select>
       <button class="btn btn-primary btn-sm" onclick="openAddItemModal('${trip.id}', null, true)">+ Add Place</button>
+      <button type="button" class="fab-add" title="Add Place" aria-label="Add Place" onclick="openAddItemModal('${trip.id}', null, true)">+</button>
     </div>
 
     <div id="item-list">
