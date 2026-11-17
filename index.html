@@ -466,6 +466,7 @@
     position:sticky;z-index:15;background:var(--bg);border:none;border-radius:0;
     padding:10px 0;margin:0 0 4px;
   }
+  @media (max-width:768px){ .day-nav-bar .day-actions{flex:1 1 100%;margin-left:0 !important;justify-content:flex-end;} }
   .day-nav-btn{
     border:1px solid var(--border-strong);background:#fff;border-radius:999px;
     width:36px;height:36px;flex-shrink:0;font-size:16px;font-weight:700;cursor:pointer;
@@ -1170,6 +1171,7 @@ sb.storage.from = function(b){
   }});
 };
 function saveOfflineSnapshot(){
+  try{ if(localStorage.getItem('victravels_offline_off')==='1') return; }catch(e){}
   try{ localStorage.setItem(OFFLINE_KEY, JSON.stringify({ savedAt: Date.now(), trips: data.trips })); }catch(e){ /* storage full: keep the previous copy */ }
 }
 function loadOfflineSnapshot(){
@@ -3493,10 +3495,10 @@ function renderTripDetail(){
         }).join('')}
       </select>
       <button class="day-nav-btn" onclick="shiftDay(1)" ${(ui.dayFilter!=='all'&&Number(ui.dayFilter)>=numDays-1)?'disabled':''} aria-label="Next day" title="Next day">&rsaquo;</button>
-      <div style="margin-left:auto;display:flex;gap:8px;">
+      <div class="day-actions" style="margin-left:auto;display:flex;gap:8px;">
         <button class="btn btn-sm btn-notes" onclick="openNotesModal('${trip.id}')" title="Trip notes">Notes</button>
         <button class="btn btn-sm btn-promo" onclick="openPromoModal('${trip.id}')" title="Deals & promotions">Promotions</button>
-        ${ui.dayFilter!=='all'? `<button class="btn btn-sm btn-share" onclick="shareDayPlan('${trip.id}')" title="Share this day's plan">Share Day</button>` : ''}
+        <button class="btn btn-sm btn-share" ${ui.dayFilter==='all'?'style="opacity:.55;"':''} onclick="shareDayPlan('${trip.id}')" title="Share this day's plan">Share Day</button>
       </div>
     </div>
     <div class="filter-bar">
@@ -3920,17 +3922,76 @@ function offlineStatusHtml(){
   const when = snap ? new Date(snap.savedAt).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
   return when ? `Trip data last saved: <strong>${when}</strong>` : 'Nothing saved on this device yet.';
 }
+function fmtBytes(n){
+  if(!n) return '0 MB';
+  if(n < 1024*1024) return Math.max(1, Math.round(n/1024))+' KB';
+  return (n/1048576).toFixed(n < 10*1048576 ? 1 : 0)+' MB';
+}
 function openOfflineModal(){
   openModal(`
     <div class="modal-header"><h3>📴 Offline pack</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
     <p class="muted-note" style="margin-top:0;">Saves your trips, cards, notes, promotions and balances, plus every photo and file you've uploaded, on <strong>this device</strong>. Without internet the app opens read-only with that saved copy. Maps, walking times and “open now” still need internet.</p>
+    <div style="background:var(--bg-soft,#f4f2ec);border-radius:12px;padding:10px 12px;margin:10px 0;">
+      <div id="off-size" style="font-size:13.5px;line-height:1.6;">Calculating size…</div>
+    </div>
     <p id="off-status" style="margin:10px 0;">${offlineStatusHtml()}</p>
     <div id="off-progress" class="muted-note" style="margin:6px 0 12px;"></div>
-    <p class="muted-note">Tip: do this on Wi-Fi before you travel, and open the app once from your Home Screen icon.</p>
+    <details style="font-size:13px;margin-bottom:10px;">
+      <summary style="cursor:pointer;font-weight:600;">Where is it saved? How do I delete it?</summary>
+      <div style="margin-top:8px;line-height:1.6;">
+        <p style="margin:0 0 8px;"><strong>Where:</strong> in this browser's private storage for this website, on this device only. It isn't in your Photos, Files or Downloads, and it isn't shared with Weng Seng's phone. On iPhone it lives inside the VicTravels Home Screen app (or Safari's website data if you use Safari).</p>
+        <p style="margin:0 0 8px;"><strong>Delete it here:</strong> tap “Delete offline data” below. That removes the saved photos, files and trip data from this device (the app itself stays, and your trips online are untouched).</p>
+        <p style="margin:0;"><strong>Or from your device settings:</strong><br>
+        iPhone/iPad: Settings → Apps → Safari → Advanced → Website Data → search “victoriayse” → Delete (a Home Screen app's data is removed when you delete the app icon).<br>
+        Android Chrome: Settings → Site settings → All sites → victoriayse.github.io → Clear &amp; reset.<br>
+        Computer: browser Settings → Privacy → Site data → victoriayse.github.io → Delete.</p>
+      </div>
+    </details>
     <div class="modal-footer">
+      <button class="btn" style="color:#c0392b;margin-right:auto;" id="off-del-btn" onclick="clearOfflinePack()">Delete offline data</button>
       <button class="btn" onclick="closeModal()">Close</button>
       <button class="btn btn-primary" id="off-btn" onclick="downloadOfflinePack()">Download for offline</button>
     </div>`);
+  offlineMeasure();
+}
+async function offlineMeasure(){
+  const el = document.getElementById('off-size');
+  if(!el) return;
+  const dataBytes = (()=>{ try{ return (localStorage.getItem(OFFLINE_KEY)||'').length*2; }catch(e){ return 0; } })();
+  if(offlineMode || !navigator.onLine){
+    el.innerHTML = 'Connect to the internet to calculate the download size.'+(dataBytes? `<br>Saved trip data on this device: <strong>${fmtBytes(dataBytes)}</strong>` : '');
+    return;
+  }
+  const urls = offlineCollectUrls();
+  let cache = null;
+  try{ cache = await caches.open('vt-files-v1'); }catch(e){}
+  let total = 0, saved = 0, savedN = 0, unknown = 0, next = 0;
+  const worker = async ()=>{
+    while(next < urls.length){
+      const u = urls[next++];
+      let isSaved = false;
+      try{ isSaved = !!(cache && await cache.match(u)); }catch(e){}
+      let len = 0;
+      try{ const r = await fetch(u, { method:'HEAD', mode:'cors' }); len = Number(r.headers.get('content-length')) || 0; }catch(e){}
+      if(!len) unknown++;
+      total += len;
+      if(isSaved){ saved += len; savedN++; }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  const el2 = document.getElementById('off-size');
+  if(!el2) return;
+  el2.innerHTML = `<strong>${urls.length}</strong> photo${urls.length===1?'':'s'}/file${urls.length===1?'':'s'} · about <strong>${fmtBytes(total)}</strong> to download${unknown? ' (size unknown for '+unknown+')' : ''}`
+    + `<br>Already saved on this device: <strong>${savedN}</strong> of ${urls.length} (${fmtBytes(saved)})`
+    + `<br>Trip data (text): about ${fmtBytes(dataBytes || JSON.stringify(data.trips||[]).length*2)}`;
+}
+async function clearOfflinePack(){
+  if(!confirm('Delete the offline pack from this device?\n\nThis removes the saved photos, files and trip data. Your trips online are not affected, and you can download it again any time.')) return;
+  try{ await caches.delete('vt-files-v1'); }catch(e){}
+  try{ localStorage.removeItem(OFFLINE_KEY); localStorage.setItem('victravels_offline_off','1'); }catch(e){}
+  const st = document.getElementById('off-status'); if(st) st.innerHTML = offlineStatusHtml();
+  const pr = document.getElementById('off-progress'); if(pr) pr.textContent = '🗑️ Offline data deleted from this device.';
+  offlineMeasure();
 }
 async function downloadOfflinePack(){
   const prog = document.getElementById('off-progress');
@@ -3939,6 +4000,7 @@ async function downloadOfflinePack(){
   if(offlineMode || !navigator.onLine){ say("You're offline — connect to the internet to download."); return; }
   if(!('caches' in window)){ say("This browser can't save files for offline use."); return; }
   if(btn) btn.disabled = true;
+  try{ localStorage.removeItem('victravels_offline_off'); }catch(e){}
   try{
     say('Saving your trips…');
     await loadAllData();
@@ -3965,6 +4027,7 @@ async function downloadOfflinePack(){
     try{ const est = await navigator.storage.estimate(); size = ` · using ${(est.usage/1048576).toFixed(0)} MB on this device`; }catch(e){}
     say(`✅ Done — ${urls.length-failed} file${urls.length-failed===1?'':'s'} saved${failed? `, ${failed} couldn't be saved`:''}${size}.`);
     const st = document.getElementById('off-status'); if(st) st.innerHTML = offlineStatusHtml();
+    offlineMeasure();
   }catch(e){
     say('Something went wrong: '+(e && e.message || e));
   } finally {
@@ -7232,7 +7295,8 @@ function buildDayShareText(trip, dayNum){
 }
 async function shareDayPlan(tripId){
   const trip = getTrip(tripId);
-  if(!trip || ui.dayFilter==='all') return;
+  if(!trip) return;
+  if(ui.dayFilter==='all'){ showToast('Pick a day first, then tap Share Day'); return; }
   const dayNum = Number(ui.dayFilter);
   const text = buildDayShareText(trip, dayNum);
   // Deliberately NOT passing a separate `title` here — the text above already opens with its
