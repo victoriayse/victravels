@@ -775,6 +775,7 @@
   .card-distance-badge.ready:hover{color:var(--primary-dark);border-color:var(--primary);}
   .card-distance-badge .popover{top:28px;left:0;right:auto;min-width:180px;}
   .card-openbadge:empty{display:none;}
+  #offline-banner{position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:9998;background:#374151;color:#fff;font-size:12px;font-weight:600;padding:6px 14px;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.3);white-space:nowrap;max-width:calc(100vw - 24px);overflow:hidden;text-overflow:ellipsis;}
   #test-banner{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;background:#1f2937;color:#fff;font-size:12.5px;font-weight:600;padding:8px 8px 8px 16px;border-radius:999px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:92vw;}
   #test-banner{white-space:nowrap;font-size:12px;padding:6px 6px 6px 14px;gap:8px;max-width:calc(100vw - 24px);}
   #test-banner > span{overflow:hidden;text-overflow:ellipsis;}
@@ -1139,6 +1140,41 @@ function selectCardColor(hex){
 const SUPABASE_URL = 'https://xndkjgtdbxpabajqbjmv.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_T3LclvJsqEnvqBdKMH-hgQ_LBiDrI9F';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* ---- Offline support: when offline the app shows the last saved copy, read-only ---- */
+let offlineMode = false;
+let offlineSavedAt = 0;
+const OFFLINE_KEY = 'victravels_offline_data';
+const OFFLINE_MSG = "You're offline — VicTravels is read-only until you're back online.";
+function offlineBlocked(){
+  const res = { data:null, error:{ message: OFFLINE_MSG } };
+  const p = new Proxy(function(){}, {
+    get(_, prop){ if(prop==='then') return (ok)=>Promise.resolve(res).then(ok); return p; },
+    apply(){ return p; },
+  });
+  return p;
+}
+const _sbFrom = sb.from.bind(sb);
+sb.from = function(t){
+  const q = _sbFrom(t);
+  return new Proxy(q, { get(target, prop){
+    if(offlineMode && ['insert','update','delete','upsert'].includes(prop)) return ()=>offlineBlocked();
+    const v = target[prop]; return typeof v==='function' ? v.bind(target) : v;
+  }});
+};
+const _sbStorageFrom = sb.storage.from.bind(sb.storage);
+sb.storage.from = function(b){
+  const s = _sbStorageFrom(b);
+  return new Proxy(s, { get(target, prop){
+    if(offlineMode && ['upload','remove','update','move','copy'].includes(prop)) return ()=>Promise.resolve({ data:null, error:{ message: OFFLINE_MSG } });
+    const v = target[prop]; return typeof v==='function' ? v.bind(target) : v;
+  }});
+};
+function saveOfflineSnapshot(){
+  try{ localStorage.setItem(OFFLINE_KEY, JSON.stringify({ savedAt: Date.now(), trips: data.trips })); }catch(e){ /* storage full: keep the previous copy */ }
+}
+function loadOfflineSnapshot(){
+  try{ const r = localStorage.getItem(OFFLINE_KEY); return r ? JSON.parse(r) : null; }catch(e){ return null; }
+}
 
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 
@@ -1383,7 +1419,15 @@ let myLocationMarker = null; // the "you are here" dot dropped by the map's loca
 /* ---- Load everything from Supabase into the same in-memory shape the UI already expects ---- */
 async function loadAllData(){
   const { data: tripRows, error: tripErr } = await sb.from('trips').select('*').order('start_date', { ascending: true });
-  if(tripErr){ alert('Could not load your trips: '+tripErr.message); data.trips = []; return; }
+  if(tripErr){
+    const snap = loadOfflineSnapshot();
+    if(snap && snap.trips && (!navigator.onLine || /fetch|network|load failed|timeout|offline/i.test(tripErr.message||''))){
+      data.trips = snap.trips; offlineMode = true; offlineSavedAt = snap.savedAt || 0;
+      renderOfflineBanner();
+      return;
+    }
+    alert('Could not load your trips: '+tripErr.message); data.trips = []; return;
+  }
 
   const tripIds = tripRows.map(t=>t.id);
   let activityRows = [], taskRows = [], fileRows = [], expenseRows = [], shoppingRows = [], settlementRows = [], adjustmentRows = [];
@@ -1432,6 +1476,9 @@ async function loadAllData(){
     settlements: settlementRows.filter(s=>s.trip_id===t.id).map(dbSettlementToItem),
     adjustments: adjustmentRows.filter(a=>a.trip_id===t.id).map(dbAdjustmentToItem),
   }));
+  offlineMode = false;
+  saveOfflineSnapshot();
+  renderOfflineBanner();
 }
 function dbSettlementToItem(s){
   return {
@@ -2298,7 +2345,7 @@ function loadGoogleMaps(){
     const script = document.createElement('script');
     script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=marker,geometry,places&loading=async&callback=__onGoogleMapsLoaded`;
     script.async = true;
-    script.onerror = ()=> reject(new Error('Failed to load Google Maps'));
+    script.onerror = ()=>{ googleMapsLoadPromise = null; script.remove(); reject(new Error('Failed to load Google Maps')); };
     document.head.appendChild(script);
   });
   return googleMapsLoadPromise;
@@ -2660,7 +2707,7 @@ async function initTripMap(trip, dayItems, poiItems){
   try {
     googleMaps = await loadGoogleMaps();
   } catch(e){
-    if(statusEl) statusEl.textContent = 'Could not load Google Maps.';
+    if(statusEl) statusEl.textContent = (offlineMode || !navigator.onLine) ? 'The map needs internet — your places are still listed below.' : 'Could not load Google Maps.';
     return;
   }
   if(tripMapRenderToken !== myToken) return; // a newer render superseded this one — stop
@@ -2921,6 +2968,7 @@ function renderHome(){
       ${jetLagToolCardHtml()}
     </div>
     <div class="home-grid" style="grid-template-columns:minmax(0,1fr);">
+      ${offlineToolCardHtml()}
       ${testModeToolCardHtml()}
     </div>
   `;
@@ -3818,6 +3866,110 @@ function autoLinkNode(root){
     frag.appendChild(document.createTextNode(t.nodeValue.slice(last)));
     t.parentNode.replaceChild(frag, t);
   });
+}
+/* ============ OFFLINE PACK ============ */
+function renderOfflineBanner(){
+  let el = document.getElementById('offline-banner');
+  if(!offlineMode){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement('div'); el.id = 'offline-banner'; document.body.appendChild(el); }
+  const when = offlineSavedAt ? ' · saved '+new Date(offlineSavedAt).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+  el.textContent = '📴 Offline — saved copy, read-only'+when;
+}
+window.addEventListener('offline', ()=>{
+  const snap = loadOfflineSnapshot();
+  offlineMode = true; offlineSavedAt = snap ? snap.savedAt : 0;
+  renderOfflineBanner();
+});
+window.addEventListener('online', ()=>{
+  if(!offlineMode) return;
+  loadAllData().then(()=>{ render(); showToast('Back online'); });
+});
+function offlineToolCardHtml(){
+  return `<div class="card tool-card" role="button" tabindex="0" onclick="openOfflineModal()">
+        <span class="flight-icon">📴</span>
+        <div style="flex:1;min-width:0;">
+          <div class="flight-name">Offline pack</div>
+          <div class="flight-meta">Save your trips, photos &amp; files for use without internet</div>
+        </div>
+        <span class="tool-chev">›</span>
+      </div>`;
+}
+function offlineCollectUrls(){
+  const urls = new Set();
+  const addPath = p => { if(p) urls.add(coverPublicUrl(p)); };
+  const scan = s => { (String(s||'').match(/https?:\/\/[^\s"'<>\\]+\/storage\/v1\/object\/public\/[^\s"'<>\\]+/g) || []).forEach(u=>urls.add(u)); };
+  (data.trips||[]).forEach(t=>{
+    (t.items||[]).forEach(i=>{
+      (i.imagePaths||[]).forEach(addPath);
+      addPath(i.iconImagePath);
+      (i.files||[]).forEach(f=>addPath(f.storagePath));
+      scan(i.notes);
+    });
+    (t.expenses||[]).forEach(e=>addPath(e.receiptPath));
+    (t.shoppingItems||[]).forEach(s=>addPath(s.imagePath));
+    Object.values(t.dayTitles||{}).forEach(v=>{ if(typeof v==='string') scan(v); });
+    try{
+      const notes = t.dayTitles && t.dayTitles.notes2 ? JSON.parse(t.dayTitles.notes2) : [];
+      notes.forEach(n=>{ (n.files||[]).forEach(f=>addPath(f.path)); scan(n.body); });
+    }catch(e){}
+  });
+  return [...urls];
+}
+function offlineStatusHtml(){
+  const snap = loadOfflineSnapshot();
+  const when = snap ? new Date(snap.savedAt).toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : null;
+  return when ? `Trip data last saved: <strong>${when}</strong>` : 'Nothing saved on this device yet.';
+}
+function openOfflineModal(){
+  openModal(`
+    <div class="modal-header"><h3>📴 Offline pack</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+    <p class="muted-note" style="margin-top:0;">Saves your trips, cards, notes, promotions and balances, plus every photo and file you've uploaded, on <strong>this device</strong>. Without internet the app opens read-only with that saved copy. Maps, walking times and “open now” still need internet.</p>
+    <p id="off-status" style="margin:10px 0;">${offlineStatusHtml()}</p>
+    <div id="off-progress" class="muted-note" style="margin:6px 0 12px;"></div>
+    <p class="muted-note">Tip: do this on Wi-Fi before you travel, and open the app once from your Home Screen icon.</p>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Close</button>
+      <button class="btn btn-primary" id="off-btn" onclick="downloadOfflinePack()">Download for offline</button>
+    </div>`);
+}
+async function downloadOfflinePack(){
+  const prog = document.getElementById('off-progress');
+  const btn = document.getElementById('off-btn');
+  const say = t => { if(prog) prog.textContent = t; };
+  if(offlineMode || !navigator.onLine){ say("You're offline — connect to the internet to download."); return; }
+  if(!('caches' in window)){ say("This browser can't save files for offline use."); return; }
+  if(btn) btn.disabled = true;
+  try{
+    say('Saving your trips…');
+    await loadAllData();
+    try{ if('serviceWorker' in navigator) await navigator.serviceWorker.ready; }catch(e){}
+    const urls = offlineCollectUrls();
+    const cache = await caches.open('vt-files-v1');
+    let done = 0, failed = 0, next = 0;
+    const worker = async ()=>{
+      while(next < urls.length){
+        const u = urls[next++];
+        try{
+          if(!(await cache.match(u))){
+            const r = await fetch(u, { mode:'cors' });
+            if(r.ok) await cache.put(u, r); else failed++;
+          }
+        }catch(e){ failed++; }
+        done++;
+        say(`Saving photos & files… ${done} / ${urls.length}`);
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    try{ if(navigator.storage && navigator.storage.persist) await navigator.storage.persist(); }catch(e){}
+    let size = '';
+    try{ const est = await navigator.storage.estimate(); size = ` · using ${(est.usage/1048576).toFixed(0)} MB on this device`; }catch(e){}
+    say(`✅ Done — ${urls.length-failed} file${urls.length-failed===1?'':'s'} saved${failed? `, ${failed} couldn't be saved`:''}${size}.`);
+    const st = document.getElementById('off-status'); if(st) st.innerHTML = offlineStatusHtml();
+  }catch(e){
+    say('Something went wrong: '+(e && e.message || e));
+  } finally {
+    if(btn) btn.disabled = false;
+  }
 }
 /* ---- Notes: location + title + rich text + attachments + link.
    Stored in trip.dayTitles under "notes2" as a JSON array. Auto-filters to the city you're in. ---- */
@@ -7307,6 +7459,7 @@ function renderToolsSection(){
     <div class="home-grid">
       ${taxToolCardHtml()}
       ${jetLagToolCardHtml()}
+      ${offlineToolCardHtml()}
       ${testModeToolCardHtml()}
     </div>`;
 }
