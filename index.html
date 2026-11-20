@@ -7127,7 +7127,7 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ---- File attachment preview (opens as an in-app pop-out instead of a new browser tab) ---- */
-function openFilePreview(url, name){
+function openFilePreview(url, name, local){
   const ext = (name.split('.').pop()||'').toLowerCase();
   const isImage = ['png','jpg','jpeg','gif','webp','svg'].includes(ext);
   const isPdf = ext==='pdf';
@@ -7138,13 +7138,15 @@ function openFilePreview(url, name){
   // (the touch-scroll gesture gets captured by the page behind it instead). Routing through
   // Mozilla's PDF.js web viewer instead renders the PDF as a normal scrollable web page, so
   // swiping down moves through every page reliably on both mobile and desktop.
+  // Saved-for-offline copy: show it with the device's own PDF viewer (the PDF.js web viewer needs internet).
+  else if(isPdf && local) body = `<iframe src="${url}" style="width:100%;height:70vh;border:1px solid var(--border);border-radius:10px;" allowfullscreen></iframe><p class="muted-note" style="margin:8px 0 0;">Saved copy (offline). If the PDF doesn't scroll here, tap “Open / Download”.</p>`;
   else if(isPdf) body = `<iframe src="https://mozilla.github.io/pdf.js/web/viewer.html?file=${encodeURIComponent(url)}" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:10px;" allowfullscreen></iframe>`;
   else body = `<p class="muted-note">Preview isn't available for this file type, but you can open it below.</p>`;
   document.getElementById('preview-content').innerHTML = `
     <div class="modal-header"><h3 style="font-size:14px;word-break:break-all;padding-right:10px;">${escapeHtml(name)}</h3><button class="modal-close" onclick="closeFilePreview()">&times;</button></div>
     ${body}
     <div class="modal-footer">
-      <a class="btn" href="${url}" target="_blank" rel="noopener">Open / Download</a>
+      <a class="btn" href="${url}" target="_blank" rel="noopener"${local? ` download="${escapeHtml(name)}"` : ''}>Open / Download</a>
       <button class="btn btn-primary" onclick="closeFilePreview()">Close</button>
     </div>`;
   document.getElementById('preview-overlay').classList.remove('hidden');
@@ -7156,13 +7158,39 @@ function closeFilePreview(){
 document.getElementById('preview-overlay').addEventListener('click', e=>{
   if(e.target.id==='preview-overlay') closeFilePreview();
 });
+// Returns a temporary blob: URL for a file saved by the Offline pack, or null if it isn't saved.
+async function offlineFileBlobUrl(path){
+  try{
+    if(!path || !('caches' in window)) return null;
+    const cache = await caches.open('vt-files-v1');
+    const r = await cache.match(coverPublicUrl(path));
+    if(!r) return null;
+    const b = await r.blob();
+    if(!b.size) return null; // opaque copy (saved while just viewing) can't be re-read
+    return URL.createObjectURL(new Blob([b], { type: r.headers.get('content-type') || b.type || 'application/octet-stream' }));
+  }catch(e){ return null; }
+}
 async function openFilePreviewFor(tripId, itemId, idx){
   const trip = getTrip(tripId);
   const item = trip && trip.items.find(i=>i.id===itemId);
   const f = item && item.files && item.files[idx];
   if(!f) return;
+  // Offline (or no signal): use the copy saved by the Offline pack, if there is one.
+  if(offlineMode || !navigator.onLine){
+    const local = await offlineFileBlobUrl(f.storagePath);
+    if(local){ openFilePreview(local, f.name, true); return; }
+    alert(`"${f.name}" isn't saved on this device. Open the app online and use Home → Tools → Offline pack → Download for offline.`);
+    return;
+  }
   const { data, error } = await sb.storage.from('attachments').createSignedUrl(f.storagePath, 3600);
   if(error){
+    const cached = await offlineFileBlobUrl(f.storagePath);
+    if(cached){ openFilePreview(cached, f.name, true); return; }
+    // A network problem is not a missing file — never offer to delete the attachment for that.
+    if(!navigator.onLine || /fetch|network|load failed|timeout/i.test(error.message||'')){
+      alert(`Could not open "${f.name}" — no connection right now.`);
+      return;
+    }
     // The DB still has this attachment linked, but the underlying file is gone from
     // storage (e.g. left behind by a past removal that deleted the object but not this
     // reference). Rather than a dead-end error every time, offer to clear the broken link.
